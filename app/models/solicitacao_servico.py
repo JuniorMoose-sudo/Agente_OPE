@@ -18,8 +18,8 @@ class SolicitacaoServico(Base):
     __tablename__ = "solicitacao_servico"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    os: Mapped[str] = mapped_column(Text, unique=True)
-    os_original: Mapped[str | None] = mapped_column(Text)
+    os: Mapped[str] = mapped_column(Text, index=True)
+    os_original: Mapped[str | None] = mapped_column(Text, unique=True)
     unidade: Mapped[str] = mapped_column(Text)
     natureza: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(Text)

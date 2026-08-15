@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     proxxima_user: str | None = None
     proxxima_password: str | None = None
+    proxxima_lookback_days: int = 30
+    proxxima_sync_interval_seconds: int = 1800
     ope_session_cookie: str | None = None
 
     telegram_bot_token: str | None = None

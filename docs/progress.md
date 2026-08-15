@@ -34,8 +34,31 @@ Status: **em andamento** (esqueleto e schema prontos; pendências do sprint list
 ### Observações
 
 - AGENTS.md referencia `docs/roadmap.md`, mas o arquivo real é `docs/roadmap-agente-decisao-operacional.md` — tratá-lo como fonte de verdade.
-- Repo git tem mudanças não commitadas (docs movidos para `docs/`). Nada foi commitado.
+- Commit `eda9a15` = Sprint 0. `/health` foi decouplado do banco (não há Postgres local) — resposta `{"status":"ok"}` validada via uvicorn.
 
-## Próximo sprint
+## Sprint 1 — Fundação + Proxxima
 
-Sprint 1 — Fundação + portar `proxxima_client.py` (`app/services/proxxima_client.py`), job APScheduler de sync (30 min), endpoints `GET /solicitacoes/resumo` e `GET /solicitacoes/por-tecnico`.
+Status: **concluído** (sync validado com janela de 30 dias; aguarda validação manual do usuário contra o painel).
+
+### Feito
+
+- `app/services/proxxima_client.py` portado do `proxxima-dashboard` (diff revisado: só imports/config mudaram; lógica de login, token anti-forgery e `GetAll` intacta).
+  - Credenciais agora via `settings.proxxima_user`/`proxxima_password` (env), URLs como constantes no módulo, `DEFAULT_LOOKBACK_DAYS = 30`.
+- Divergência roadmap×client resolvida com o usuário: payload do `GetAll` **é superconjunto** com as chaves do roadmap (`os`/`tecnico`/`uni`/`nat`/`status`/`abertura`/`venc`/`slaTxt`/`relatos` — o `COLUMNS_DATA` só pede as colunas da tela; o response traz mais).
+- **Página de login mudou** (Connect v1.15.2.33): não tem mais `__RequestVerificationToken`. Client adaptado — token opcional (loga warning e segue), mantém suporte caso volte.
+- De-para payload→modelo validado com o usuário: `os`=`numero_Obra` split "/", `os_original`=`numero_Obra`, `unidade`=`grupo_Area`, `natureza`=`natureza`, `status`=`status_Execucao`, `tecnico`=`responsavel` (nome maiúsculo), `abertura`/`venc`=`dataHora_Abertura_OS`/`dataHora_Vencimento_OS` (BR→datetime), `sla_status`=`sla`, `relatos`=`observacao`.
+- Definição de **OS aberta** aprovada: status não começa com "Fechada" e não é "Cancelado".
+- Job `app/jobs/sync_proxxima.py`: upsert em `solicitacao_servico` por `os_original`, em lotes de 1000 (PostgreSQL limita a ~65535 params/statement), APScheduler 30 min via lifespan (não roda em teste manual).
+- **Decisão de modelagem**: `numero_Obra` pode ter sub-ordens (`8722521/4`, `8671912/2`); a chave única do upsert passou de `os` para `os_original` (= `numero_Obra` completo), mantendo todas as sub-ordens. `os` (base) virou coluna de join/agrupamento com índice.
+- Endpoints async `GET /solicitacoes/resumo?unidade=` e `GET /solicitacoes/por-tecnico?tecnico=` — leitura apenas do Postgres; sem chamada externa no request.
+- Sync real (janela 30 dias): 25.769 registros, 0 NULL de técnico, paginação ~52 páginas, tempo ~3 min. Execução manual isolada (scheduler não ativado).
+
+### Pendências
+
+- Validação final do usuário: `por-tecnico`/`resumo` de dados reais batem com o painel (ex.: técnico real + unidade REG-CAMPINA GRANDE).
+- Quando validar e ligar o agendamento de produção, subir uvicorn (que ativa o scheduler via lifespan).
+
+### Observações
+
+- Commit `eda9a15` = Sprint 0. Sprint 1 commitado após validação do sync de 30 dias.
+- `httpx` e `apscheduler` adicionados ao `requirements.txt`.
