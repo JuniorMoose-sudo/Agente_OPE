@@ -20,3 +20,6 @@ Thumbs.db
 data/*.xlsx
 data/*.csv
 !data/.gitkeep
+
+# Relatórios gerados (.docx)
+relatorios/

@@ -2,6 +2,39 @@
 
 Última atualização: 2026-08-16
 
+## Sprint 6 — Relatórios automáticos
+
+Status: **em andamento** (service, router e tool implementados; aguarda validação com uvicorn real).
+
+### Feito
+
+- `app/models/relatorio.py`: modelo `Relatorio` (id, titulo, unidade, periodo_de, periodo_ate, nome_arquivo, caminho, criado_em). Tabela criada automaticamente via `Base.metadata.create_all` no lifespan.
+- `app/services/relatorio.py`: `gerar_relatorio_semanal()` — gera `.docx` com python-docx:
+  - Resumo Geral: backlog (abertas agora), fechadas produtivas/improdutivas, canceladas, HE, infrações, recorrências.
+  - Top técnicos — recorrência: ranking por reaberturas no período (filtro por unidade).
+  - Top técnicos — HE: ranking por horas extras (via snapshots rankTecHE do painel-ope).
+  - Salva em disco (`DIR_RELATORIOS`, padrão `relatorios/`) e registra no banco.
+- `app/routers/relatorio.py`:
+  - `POST /relatorios` — gera relatório (body: `{unidade, periodo_de, periodo_ate}`). Retorna metadados + ID.
+  - `GET /relatorios/{id}` — metadados do relatório.
+  - `GET /relatorios/{id}/download` — download do `.docx` via `FileResponse`.
+  - Todos protegidos por `exigir_token_ops`.
+- Plugin `.opencode/plugins/operacoes.ts`: tool `getRelatorioSemanal` adicionada — chama `POST /relatorios`, retorna ID + `download_url`.
+- Agent `.opencode/agent/operacoes.md`: seção "Relatórios" adicionada ao prompt.
+- `app/main.py`: router `relatorio` registrado; `Base.metadata.create_all(engine)` no lifespan.
+- `app/config.py`: nova opção `dir_relatorios` (padrão `relatorios`).
+- `.env.example`: `DIR_RELATORIOS=relatorios` documentado.
+- `.gitignore`: `relatorios/` adicionado.
+- `requirements.txt`: `python-docx>=1.1` adicionado.
+- pytest: 31 passed (testes existentes, nenhum quebrado).
+
+### Pendências
+
+- Testar geração de relatório com uvicorn real (POST /relatorios + download).
+- Reiniciar opencode para pegar a nova tool `getRelatorioSemanal`.
+- Validar em conversa real: "Gere um relatório da Campina Grande dessa semana".
+- **Extensão futura (não implementar agora)**: integração Telegram para enviar relatório automaticamente ou alertar quando pronto.
+
 ## Sprint 5 — O agente: tools no OpenCode + Gemini
 
 Status: **concluído** (validado em conversa real no opencode desktop; escopo Sheets antecipado do planejamento original).

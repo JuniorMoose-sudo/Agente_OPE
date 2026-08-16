@@ -161,6 +161,41 @@ export const OperacoesPlugin = async (input: { directory?: string }) => {
           )
         },
       }),
+      getRelatorioSemanal: tool({
+        description:
+          "Gera um relatório semanal em .docx para uma unidade. Retorna o ID e a URL de download do relatório. Use quando o usuário pedir para gerar um relatório.",
+        args: {
+          unidade: z
+            .string()
+            .describe("Unidade: CAMPINA GRANDE ou LAGOA SECA"),
+          periodo_de: periodoDe.optional(),
+          periodo_ate: periodoAte.optional(),
+        },
+        async execute(args: {
+          unidade: string
+          periodo_de?: string
+          periodo_ate?: string
+        }) {
+          const { de, ate } = semanaAtual()
+          const headers: Record<string, string> = { "Content-Type": "application/json" }
+          if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`
+          const res = await fetch(`${API_BASE}/relatorios`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              unidade: args.unidade,
+              periodo_de: args.periodo_de ?? de,
+              periodo_ate: args.periodo_ate ?? ate,
+            }),
+          })
+          if (!res.ok) throw new Error(`API respondeu ${res.status}`)
+          const dados = await res.json()
+          return JSON.stringify({
+            ...dados,
+            download_url: `${API_BASE}/relatorios/${dados.id}/download`,
+          }, null, 2)
+        },
+      }),
     },
   }
 }

@@ -34,5 +34,8 @@ class Settings(BaseSettings):
     sheets_spreadsheet_url: str | None = None
     sheets_aba_inspecao: str = "Inspecao"
 
+    # Diretório onde os relatórios .docx são salvos
+    dir_relatorios: str = "relatorios"
+
 
 settings = Settings()

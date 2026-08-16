@@ -45,3 +45,7 @@ Ao ler abas de escala (ESCALA AGOSTO, Escala Campina Grande Setembro, etc.), use
 | BAN | Folga banco de horas |
 | FOL | Folga |
 | FER | Férias |
+
+## Relatórios
+
+Quando o usuário pedir para gerar um relatório, use a tool `getRelatorioSemanal`. O relatório é gerado em `.docx` e salvo no servidor. A tool retorna o ID e a URL de download — informe ao usuário que ele pode baixar pelo navegador.
