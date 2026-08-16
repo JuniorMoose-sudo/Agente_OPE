@@ -22,8 +22,17 @@ class Settings(BaseSettings):
     proxxima_sync_interval_seconds: int = 1800
     ope_session_cookie: str | None = None
 
+    # Token de acesso à própria API (Sprint 5) — enviado pelo plugin do agente
+    # como `Authorization: Bearer <token>`. Nunca hardcoded, só via env.
+    ops_api_token: str | None = None
+
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+
+    sheets_service_account_json: str | None = None
+    sheets_service_account_file: str | None = None
+    sheets_spreadsheet_url: str | None = None
+    sheets_aba_inspecao: str = "Inspecao"
 
 
 settings = Settings()

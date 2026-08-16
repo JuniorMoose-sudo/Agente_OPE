@@ -8,6 +8,7 @@ venv/
 # Segredos — nunca versionar
 .env
 .env.local
+credencial.json
 
 # IDE / SO
 .idea/

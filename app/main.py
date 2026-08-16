@@ -2,15 +2,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.jobs.sync_painel_ope import start_scheduler as start_scheduler_ope
+from app.jobs.sync_painel_ope import stop_scheduler as stop_scheduler_ope
 from app.jobs.sync_proxxima import start_scheduler, stop_scheduler
-from app.routers import health, solicitacoes
+from app.routers import banco_horas, diagnostico, health, planilha, recorrencia, solicitacoes
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     start_scheduler()
+    start_scheduler_ope()
     yield
     stop_scheduler()
+    stop_scheduler_ope()
 
 
 app = FastAPI(
@@ -22,3 +26,7 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(solicitacoes.router)
+app.include_router(banco_horas.router)
+app.include_router(recorrencia.router)
+app.include_router(diagnostico.router)
+app.include_router(planilha.router)

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -23,9 +23,7 @@ class OcorrenciaRecorrencia(Base):
     cidade: Mapped[str | None] = mapped_column(Text)
     unidade: Mapped[str | None] = mapped_column(Text)
     etiqueta: Mapped[str | None] = mapped_column(Text)
-    protocolo_anterior: Mapped[str | None] = mapped_column(
-        Text, ForeignKey("ocorrencia_recorrencia.protocolo")
-    )
+    protocolo_anterior: Mapped[str | None] = mapped_column(Text)
     data_abertura_anterior: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     data_fechamento_anterior: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     problema_fechamento_anterior: Mapped[str | None] = mapped_column(Text)
