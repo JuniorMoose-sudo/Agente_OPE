@@ -2,37 +2,74 @@
 
 Última atualização: 2026-08-16
 
+## Sprint 7 — Robustez
+
+Status: **concluído** (testes pytest expandidos de 31 para 82; commit pendente).
+
+### Feito
+
+- `tests/test_cruzamento.py` (novos):
+  - `TestNormalizarUnidade` — 10 testes cobrindo prefixo `REG-`, `UNIDADE `, sufixo `| PB`, case insensitivity, None/vazio, espaços extras.
+  - `TestIsAberta` — 11 testes cobrindo todos os status reais (Aberta, Fechada Produtiva/Improdutiva, Cancelado, None, vazio).
+  - `TestDeltaStr` — 4 testes: igual, aumento, queda, zero→algo.
+  - `TestDeltaPct` — 5 testes: igual, +50%, -50%, anterior zero com algo, ambos zero.
+- `tests/test_relatorio.py` (novos):
+  - `TestAddTitulo`, `TestAddSubsecao`, `TestAddParagrafo`, `TestAddTabela`, `TestEnsureDir` — helpers de formatação.
+  - `TestLogicaCalculo` — lógica de cálculo de taxa produtividade, concentração top 3, e deltas de tendência.
+  - `TestIsAbertaRelatorio` — `_is_aberta` do módulo relatorio (diferente do sync_proxxima).
+  - `TestConstantesAlerta` — constantes LIMITE_REABERTURA=1, LIMITE_HE_SEMANAL=8.0, META_INSPECAO=7.0.
+- pytest: **82 passed** (31 existentes + 51 novos).
+
+### Observações sobre scheduling
+
+O agendamento (APScheduler) já está implementado nos Sprints 1 e 2:
+- `sync_proxxima`: 30 minutos via lifespan (`app/main.py`).
+- `sync_painel_ope`: diário via lifespan.
+- `checar_cookie`: diário via lifespan.
+Todos os three jobs estão ativos quando o uvicorn sobe. Não é necessário implementar scheduling adicional no Sprint 7.
+
+### Pendências
+
+- **Integração TOTVS Analytics (GoodData)** — aguarda payload+response do F12 do usuário para mapear a API. Detalhes no plano de execução.
+- **Testes com DB real (SQLite em memória)** — adicionar fixtures SQLAlchemy para testar queries de `cruzamento.py` e `relatorio.py` contra banco de teste.
+
 ## Sprint 6 — Relatórios automáticos
 
-Status: **em andamento** (service, router e tool implementados; aguarda validação com uvicorn real).
+Status: **concluído** (relatório rico 10 seções gerado com sucesso, commit `184bb57`).
 
 ### Feito
 
 - `app/models/relatorio.py`: modelo `Relatorio` (id, titulo, unidade, periodo_de, periodo_ate, nome_arquivo, caminho, criado_em). Tabela criada automaticamente via `Base.metadata.create_all` no lifespan.
-- `app/services/relatorio.py`: `gerar_relatorio_semanal()` — gera `.docx` com python-docx:
-  - Resumo Geral: backlog (abertas agora), fechadas produtivas/improdutivas, canceladas, HE, infrações, recorrências.
-  - Top técnicos — recorrência: ranking por reaberturas no período (filtro por unidade).
-  - Top técnicos — HE: ranking por horas extras (via snapshots rankTecHE do painel-ope).
-  - Salva em disco (`DIR_RELATORIOS`, padrão `relatorios/`) e registra no banco.
+- `app/services/relatorio.py`: `gerar_relatorio_semanal()` — relatório rico 10 seções com python-docx:
+  1. **Resumo Executivo** com KPIs (backlog, fechadas, HE, infrações, recorrências) + variação vs período anterior.
+  2. **Análise de Tendências** — insights automáticos (backlog cresceu? produtividade caiu? HE acima do esperado?).
+  3. **Produtividade por Técnico** — abertas, produtivas, improdutivas, canceladas, total, taxa de produtividade; destaque melhor/pior.
+  4. **Recorrência por Técnico** — protocolos, reaberturas, taxa, concentração top 3.
+  5. **Horas Extras por Técnico** — ranking com totais.
+  6. **Distribuição por Natureza** — com percentuais.
+  7. **Distribuição por Dia da Semana** — padrões temporais (dia alto/baixo).
+  8. **Risco Combinado** — técnicos com HE **e** recorrência simultaneamente (cruzamento de fontes).
+  9. **Protocolos com Recorrência** — detalhe por protocolo: técnico, problema de fechamento, dias entre OS.
+  10. **Observações e Fontes** — timestamp de geração.
+  - Compara automaticamente com período anterior (mesma duração, janela deslizante).
+  - Helpers: `_delta_str`, `_delta_pct`, `_addSubsecao`, `_addParagrafos`, `_is_aberta`.
+  - Queries DB: `_buscar_produtividade_por_tecnico`, `_buscar_naturezas`, `_buscar_distribuicao_dia_semana`, `_buscar_top_protocolos_recorrentes`, `_buscar_tecnicos_com_he_e_recorrencia`.
 - `app/routers/relatorio.py`:
   - `POST /relatorios` — gera relatório (body: `{unidade, periodo_de, periodo_ate}`). Retorna metadados + ID.
   - `GET /relatorios/{id}` — metadados do relatório.
-  - `GET /relatorios/{id}/download` — download do `.docx` via `FileResponse`.
-  - Todos protegidos por `exigir_token_ops`.
-- Plugin `.opencode/plugins/operacoes.ts`: tool `getRelatorioSemanal` adicionada — chama `POST /relatorios`, retorna ID + `download_url`.
+  - `GET /relatorios/{id}/download` — download do `.docx` via `FileResponse` (sem auth — viabiliza download direto pelo navegador).
+- Plugin `.opencode/plugins/operacoes.ts`: tool `getRelatorioSemanal` — chama `POST /relatorios`, retorna ID + `download_url`.
 - Agent `.opencode/agent/operacoes.md`: seção "Relatórios" adicionada ao prompt.
 - `app/main.py`: router `relatorio` registrado; `Base.metadata.create_all(engine)` no lifespan.
 - `app/config.py`: nova opção `dir_relatorios` (padrão `relatorios`).
 - `.env.example`: `DIR_RELATORIOS=relatorios` documentado.
 - `.gitignore`: `relatorios/` adicionado.
 - `requirements.txt`: `python-docx>=1.1` adicionado.
-- pytest: 31 passed (testes existentes, nenhum quebrado).
+- pytest: 82 passed (31 existentes + 51 novos em Sprint 7).
+- **Validado com sucesso**: relatório ID 3 gerado (`relatorio_CAMPINA GRANDE_2026-08-10_2026-08-16.docx`) via tool `getRelatorioSemanal` em conversa real.
 
 ### Pendências
 
-- Testar geração de relatório com uvicorn real (POST /relatorios + download).
-- Reiniciar opencode para pegar a nova tool `getRelatorioSemanal`.
-- Validar em conversa real: "Gere um relatório da Campina Grande dessa semana".
 - **Extensão futura (não implementar agora)**: integração Telegram para enviar relatório automaticamente ou alertar quando pronto.
 
 ## Sprint 5 — O agente: tools no OpenCode + Gemini
