@@ -82,7 +82,6 @@ def obter_relatorio(relatorio_id: int, db: Session = Depends(get_db)):
 
 @router.get(
     "/{relatorio_id}/download",
-    dependencies=[Depends(exigir_token_ops)],
 )
 def download_relatorio(relatorio_id: int, db: Session = Depends(get_db)):
     reg = db.get(Relatorio, relatorio_id)
