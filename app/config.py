@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     sheets_spreadsheet_url: str | None = None
     sheets_aba_inspecao: str = "Inspecao"
 
+    # TOTVS Analytics (GoodData) — cookie de sessão do navegador
+    totvs_sst_cookie: str | None = None
+
     # Diretório onde os relatórios .docx são salvos
     dir_relatorios: str = "relatorios"
 

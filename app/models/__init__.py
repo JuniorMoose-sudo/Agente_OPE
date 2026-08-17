@@ -1,6 +1,7 @@
 from app.models.banco_horas_semanal import BancoHorasSemanal
 from app.models.infracao import Infracao
 from app.models.inspecao import Inspecao
+from app.models.metrica_totvs import MetricaTotvs
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
 from app.models.relatorio import Relatorio
 from app.models.roster_tecnico import RosterTecnico
@@ -10,6 +11,7 @@ __all__ = [
     "BancoHorasSemanal",
     "Infracao",
     "Inspecao",
+    "MetricaTotvs",
     "OcorrenciaRecorrencia",
     "Relatorio",
     "RosterTecnico",
