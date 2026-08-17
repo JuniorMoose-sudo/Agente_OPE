@@ -25,6 +25,7 @@ from app.services.totvs_client import (
     DASHBOARD_PREMIACAO_SUPERVISOR,
     REPORT_KPI_REPAROS,
     REPORT_PREMIACAO_SUPERVISOR,
+    REPORT_PONTUACAO_DIA_TECNICO,
     TotvsAuthError,
     TotvsClient,
     TotvsError,
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 # Reports a sincronizar: (dashboard_id, report_id, titulo)
 REPORTS_A_SINCRONIZAR = [
     (DASHBOARD_KPI, REPORT_KPI_REPAROS, "KPIs Reparos - Operações Geral"),
-    (DASHBOARD_PREMIACAO_SUPERVISOR, REPORT_PREMIACAO_SUPERVISOR, "Premiação Supervisor - Detalhado"),
+    (DASHBOARD_PREMIACAO_SUPERVISOR, REPORT_PREMIACAO_SUPERVISOR, "Premiação Supervisor - Timestamp"),
+    (DASHBOARD_PREMIACAO_SUPERVISOR, REPORT_PONTUACAO_DIA_TECNICO, "Pontuação por Dia x Técnico e Unidade"),
 ]
 
 

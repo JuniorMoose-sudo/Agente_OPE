@@ -40,6 +40,8 @@ DASHBOARD_KPI = "124470"
 REPORT_PREMIACAO_SUPERVISOR = "1464793"
 DASHBOARD_PREMIACAO_SUPERVISOR = "2278082"
 
+REPORT_PONTUACAO_DIA_TECNICO = "2837323"  # Pontuação por Dia x Técnico e Unidade
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"

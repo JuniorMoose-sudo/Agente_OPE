@@ -81,14 +81,13 @@ def pontuacao_tecnico(
     data: date | None = Query(None, description="Data de referência (YYYY-MM-DD). Padrão: hoje."),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Pontuação por técnico do TOTVS (média ou por dia)."""
+    """Pontuação por técnico do TOTVS (por dia, unidade e técnico)."""
     ref = data or date.today()
-    # Busca qualquer report de pontuação (4890627=KPI, 1464793=Premiação, ou outros)
     registro = db.execute(
         select(MetricaTotvs)
         .where(
+            MetricaTotvs.report_id == "2837323",
             MetricaTotvs.data_referencia == ref,
-            MetricaTotvs.report_titulo.ilike("%pontua%"),
         )
         .order_by(MetricaTotvs.criado_em.desc())
     ).scalars().first()

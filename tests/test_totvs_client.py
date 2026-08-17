@@ -8,6 +8,7 @@ from app.services.totvs_client import (
     DASHBOARD_PREMIACAO_SUPERVISOR,
     REPORT_KPI_REPAROS,
     REPORT_PREMIACAO_SUPERVISOR,
+    REPORT_PONTUACAO_DIA_TECNICO,
     WORKSPACE,
     TotvsClient,
 )
@@ -110,3 +111,6 @@ class TestConstantesTotvs:
 
     def test_report_premiacao(self):
         assert REPORT_PREMIACAO_SUPERVISOR == "1464793"
+
+    def test_report_pontuacao(self):
+        assert REPORT_PONTUACAO_DIA_TECNICO == "2837323"
