@@ -76,6 +76,36 @@ def premiacao_supervisor(
     }
 
 
+@router.get("/pontuacao")
+def pontuacao_tecnico(
+    data: date | None = Query(None, description="Data de referência (YYYY-MM-DD). Padrão: hoje."),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Pontuação por técnico do TOTVS (média ou por dia)."""
+    ref = data or date.today()
+    # Busca qualquer report de pontuação (4890627=KPI, 1464793=Premiação, ou outros)
+    registro = db.execute(
+        select(MetricaTotvs)
+        .where(
+            MetricaTotvs.data_referencia == ref,
+            MetricaTotvs.report_titulo.ilike("%pontua%"),
+        )
+        .order_by(MetricaTotvs.criado_em.desc())
+    ).scalars().first()
+
+    if not registro:
+        raise HTTPException(status_code=404, detail=f"Sem dados de pontuação do TOTVS para {ref}.")
+
+    xtab = (registro.payload or {}).get("xtab_data", {})
+    dados_parseados = TotvsClient.parse_xtab_data(xtab)
+
+    return {
+        "data_referencia": ref.isoformat(),
+        "report_titulo": registro.report_titulo,
+        "dados": dados_parseados,
+    }
+
+
 @router.get("/status-cookie")
 def status_cookie_totvs() -> dict:
     """Estado do cookie do TOTVS Analytics: presente/ausente."""
