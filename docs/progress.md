@@ -197,6 +197,37 @@ existia na lista `abertas` obtida do GetAll (campo `natureza`), faltava agrupar.
   `SHEETS_SERVICE_ACCOUNT_JSON` no `.env`.
 - Fase 3/4 (skill persona + cron) — ver seção Fase 2.
 
+## Fase 3 — Persona consultiva no Hermes (2026-08-28)
+
+Status: **implementado e validado** (aguardando validação do usuário no Telegram).
+
+### Feito
+
+- Persona canônica criada em `docs/persona-hermes.md` (fonte única no repo:
+  papel puramente consultivo, como responder, tabela de tools com quando usar,
+  `get_tempo_real` com `abertas_agora_por_natureza` para "SEM ACESSO em aberto
+  agora", legendas de escala T-1/T-4/T-9/T-10/DSR/BAN/FOL/FER, relatórios).
+- Copiada para `/home/ubuntu/.hermes/persona-operacoes.md` (4.351 bytes).
+- Injetada via `agent.coding_instructions` no `~/.hermes/config.yaml`
+  (round-trip yaml via python com backup em `config.yaml.bak-persona`).
+  Mecanismo descoberto: `agent/coding_context.py::_coding_instructions` →
+  `coding_system_prompt_parts` — só entra no prompt quando `valid_tool_names`
+  não é vazio (por isso teste com `--safe-mode` não mostra a persona; o gateway
+  Telegram não usa safe-mode e funciona).
+- Gateway reiniciado (sessões novas já carregam a persona).
+
+### Validação (headless, sem safe-mode)
+
+- "O que você é? Pode abrir uma OS?" → respondeu como **assistente consultivo
+  do OPE**, recusou abrir OS ("só consigo LER dados") e puxou **dado real ao
+  vivo**: 17 SEM ACESSO abertas em CG (API Proxxima 11:38), 268 abertas, 162
+  SLA vencido, 192 sem técnico — comportamento igual ao do agente opencode.
+
+### Pendências
+
+- Validação do usuário no Telegram (persona + resposta SEM ACESSO).
+- Fase 4: cron (resumo diário 07:30 + varredura 09:00/17:00, UTC-3).
+
 ## Material de Escala Setembro 2026
 
 Status: **concluído** (material gerado e salvo em Downloads).
