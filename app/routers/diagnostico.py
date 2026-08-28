@@ -225,19 +225,20 @@ def _buscar_dados_tempo_real(unidade: str) -> dict:
     ]
 
     status_count = Counter(s.get("status_Execucao", "N/A") for s in abertas)
+    nat_abertas = Counter((s.get("natureza") or "N/A") for s in abertas)
 
     enc_ontem = [s for s in dados if (s.get("dataHora_Encerramento_OS") or "").startswith(ontem_str)]
     fp_ontem = len([s for s in enc_ontem if (s.get("status_Execucao") or "").startswith("Fechada Produtiva")])
     fi_ontem = len([s for s in enc_ontem if (s.get("status_Execucao") or "").startswith("Fechada Improdutiva")])
 
     abert_hoje = [s for s in dados if (s.get("dataHora_Abertura_OS") or "").startswith(hoje_str)]
-    nat_hoje = Counter(s.get("natureza", "N/A") for s in abert_hoje)
+    nat_hoje = Counter((s.get("natureza") or "N/A") for s in abert_hoje)
 
     enc_hoje = [s for s in dados if (s.get("dataHora_Encerramento_OS") or "").startswith(hoje_str)]
     fp_hoje = [s for s in enc_hoje if (s.get("status_Execucao") or "").startswith("Fechada Produtiva")]
     fi_hoje = [s for s in enc_hoje if (s.get("status_Execucao") or "").startswith("Fechada Improdutiva")]
-    nat_fp_hoje = Counter(s.get("natureza", "N/A") for s in fp_hoje)
-    nat_fi_hoje = Counter(s.get("natureza", "N/A") for s in fi_hoje)
+    nat_fp_hoje = Counter((s.get("natureza") or "N/A") for s in fp_hoje)
+    nat_fi_hoje = Counter((s.get("natureza") or "N/A") for s in fi_hoje)
 
     sla_vencido = len([
         s for s in abertas
@@ -251,6 +252,7 @@ def _buscar_dados_tempo_real(unidade: str) -> dict:
         "fonte": "Proxxima API (tempo real)",
         "timestamp": datetime.now().isoformat(),
         "abertas_agora": len(abertas),
+        "abertas_agora_por_natureza": dict(nat_abertas.most_common()),
         "detalhe_status": dict(status_count.most_common()),
         "encerradas_ontem": {
             "total": len(enc_ontem),

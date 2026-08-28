@@ -40,13 +40,162 @@ provider Gemini (chave atual); stack inteira (backend+Postgres+jobs+Hermes) na A
 
 ### Pendências (próximas fases)
 
-- Fase 0: backend+Postgres+jobs na AWS, `.env` de produção, validar syncs com os
-  números conhecidos.
 - Fase 2: instalar Hermes na AWS (Gemini, MCP config, gateway Telegram,
   toolsets restritos).
 - Fase 3: skill/persona consultiva + validação com as perguntas do Sprint 5.
-- Fase 4: cron (resumo diário 07:30 + varredura de alertas 09:00/17:00).
+- Fase 4: cron (resumo diário 07:30 + varredura de alertas 09:00/17:00 — em
+  UTC-3 conforme decisão do usuário).
 - Fase 5: docs/transição (default_agent do opencode).
+
+## Sprint Hermes — Fase 0: backend + Postgres na AWS
+
+Status: **concluído** (serviço ativo, health 200, auth 401/200 validada, app
+local desligado — AWS é a única instância).
+
+Decisões do usuário (2026-08-28): manter **apenas a AWS** ligada (app local
+desligado) e horário de referência **UTC-3**.
+
+### Feito
+
+- Instância `3.147.33.126` (Ubuntu 24.04 LTS, t3.micro, swap 2GB já existente).
+  Acesso SSH: `C:\Users\proxx\Downloads\mercado-inteligente-key.pem`.
+- Todo o deployment foi feito por SSH (sem tocar código; `.env` enviado por
+  scp, valores nunca impressos/logados).
+- PostgreSQL 16: role `ops` + banco `agente_ope` (senha gerada no servidor e
+  salva só no `.env` local da instância, permissão 600).
+- Repo clonado em `/home/ubuntu/agente-ope` (branch main), venv Python 3.12 +
+  requirements instalados.
+- Serviço systemd `agente-ope.service`: uvicorn em `127.0.0.1:8100`,
+  `Restart=always`, WorkingDirectory no repo (o app lê `.env` via pydantic).
+- Timezone do SO: `America/Sao_Paulo` (UTC-3) — alinhado ao `TIMEZONE` já usado
+  no scheduler do Proxxima; os schedulers diários (painel-ope, TOTVS) herdam o
+  TZ do sistema.
+- Telegram ativo: bot `AnalistaOPE_bot` validado via `getMe`; token gravado no
+  `.env` do servidor.
+
+### Validação
+
+- `GET /health` → 200 (`{"status":"ok","database":"ok"}`), 8 tabelas criadas
+  via `create_all` no primeiro boot.
+- Auth: 401 sem token / 200 com token Bearer em
+  `/diagnostico/status-unidade/CAMPINA GRANDE` (banco vazio, zeros esperados).
+- Syncs reais autorizados pelo usuário (rotina idêntica à que rodava local).
+  Primeira carga a ~30min do start (interval do Proxxima); painel-ope/TOTVS
+  diários.
+
+### Enroscos resolvidos (registro para histórico)
+
+- `.env` Windows com CRLF misto: quebrava a auth (token com `\r` → 401) e o
+  dialeto `postgresql` virou `postgesql` (crash `NoSuchModuleError` no boot).
+  Normalizado para LF (`tr -d '\r'`) + URL corrigida no servidor.
+  **Lições para o próximo deploy**: normalizar `.env` para LF antes de subir e
+  validar auth logo após o primeiro boot.
+- Schedulers são interval (sem disparo imediato no start) — janela para validar
+  antes do primeiro sync real.
+
+### Pendências
+
+- ~~`TELEGRAM_CHAT_ID` ainda não está no `.env` do servidor~~ — **concluído na
+  Fase 2** (gravado como `6664094468`, id do próprio usuário).
+
+## Sprint Hermes — Fase 2: Hermes Agent na AWS (Gemini + gateway Telegram + MCP)
+
+Status: **em andamento** (gateway ativo e emparelhado; falta skill/persona —
+Fase 3 — e cron — Fase 4).
+
+### Feito
+
+- Modelo configurado hoje: provider `opencode-free` (anônimo, gratuito) +
+  `hy3-free` — validado com chat headless (`hermes -z`). Histórico: Gemini free
+  esgotou a cota diária (429 "free_tier_requests limit 5" → prepayment
+  depleted); `groq` não é provider de LLM neste build (só STT); DeepSeek tem
+  chave válida mas o provider do Hermes envia requisição sem header
+  Authorization (fallback pendente de correção — chave em `~/.hermes/.env`).
+- MCP server `agente-ope` declarado no `~/.hermes/config.yaml` (stdio →
+  `/home/ubuntu/agente-ope/.venv/bin/python -m app.services.mcp_server`, env
+  `OPS_API_URL=http://127.0.0.1:8100`, `OPS_API_TOKEN=${OPS_API_TOKEN}` via
+  `.env` do Hermes). **Fix importante**: `PYTHONPATH=/home/ubuntu/agente-ope`
+  necessário no env do MCP — sem ele, o módulo `app` não importa (cwd do Hermes
+  ≠ repo) e o servidor MCP morre ("Connection closed").
+- Ferramentas do Telegram restritas ao mínimo consultivo: habilitadas apenas
+  `file`, `cronjob` e o MCP `agente-ope`; desabilitadas web/browser/terminal/
+  vision/image_gen/tts/skills/todo/memory/delegation/code_execution/etc.
+- Gateway instalado como serviço do sistema: `hermes gateway install --system
+  --run-as-user ubuntu --start-now` (unit `hermes-gateway.service`, ativa no
+  boot). Observação: PATH do sudo não inclui `~/.local/bin` — usar caminho
+  absoluto com sudo.
+- Emparelhamento Telegram: o bot responde ao desconhecido com pairing code;
+  `hermes pairing approve telegram <CODIGO>` autorizou o usuário **Junior
+  (id 6664094468)** — reconhecido automaticamente na próxima mensagem.
+- `TELEGRAM_ALLOWED_USERS=6664094468` no `~/.hermes/.env` e
+  `TELEGRAM_CHAT_ID=6664094468` no `.env` do backend (sai o warning de
+  allowlist e ativa os alertas do `avisar_telegram`).
+
+### Validação
+
+- Chat headless respondeu em PT-BR via Gemini ✓ e depois via
+  opencode-free/hy3-free ✓; `hermes tools list` mostra o MCP `agente-ope` com
+  todas as tools e o Telegram só com file/cronjob/MCP ✓; serviços
+  `agente-ope.service` e `hermes-gateway.service` ativos ✓.
+- 1ª pergunta real via Telegram (28/08 ~10h) gerou chamadas MCP ao vivo no
+  backend (tempo-real LAGOA SECA 200, status-unidade CG/LS 200) e o agente
+  respondeu com "7 SEM ACESSO abertas hoje em CG, 3 em LS" — o acumulado em
+  aberto por natureza não existia no endpoint (motivo da Rota A, abaixo).
+- 1º sync do Proxxima rodou (~30 min após boot) e populou o banco:
+  **24.165 OS** em `solicitacao_servico`.
+
+### Enroscos resolvidos
+
+- `hermes chat --list-toolsets` não existe nesta versão (só `hermes tools list`).
+- Config via `hermes config set` aceita listas YAML (`args`) e variáveis
+  `${VAR}` — mantém segredos fora do config.yaml.
+- Gateway em "Connecting to Telegram (attempt 1/8)" não é erro: sem TTY ele
+  fica aguardando o emparelhamento; a pairing code responde ao primeiro contato.
+- 1º restart do gateway falhou por contenção de `gateway.lock` (instância
+  antiga ainda liberando) — systemd relançou e estabilizou; sem loop.
+
+### Pendências
+
+- Fase 3: skill/persona consultiva (replicar `.opencode/agent/operacoes.md`) —
+  hoje o Hermes responde como agente genérico com as tools MCP.
+- Fase 4: cron (resumo diário 07:30 + varredura de alertas 09:00/17:00, UTC-3).
+- Validar primeira pergunta real via Telegram (ex.: "como está Campina Grande?").
+- Conferir 1º sync do Proxxima populando as tabelas (contagem de
+  `solicitacao_servico`).
+
+## Rota A — tempo-real com abertas por natureza (2026-08-28, aprovada pelo usuário)
+
+Status: **implementado + testado**.
+
+Motivo: o bot respondeu à pergunta "quantos protocolos SEM ACESSO estão em
+aberto?" com apenas as abertas de hoje (o endpoint `tempo-real` só quebrava por
+natureza o que abriu/encerrou hoje). O acumulado em aberto por natureza já
+existia na lista `abertas` obtida do GetAll (campo `natureza`), faltava agrupar.
+
+### Feito
+
+- `app/routers/diagnostico.py`: novo campo `abertas_agora_por_natureza` no
+  endpoint `GET /diagnostico/tempo-real/{unidade}` (Counter por natureza sobre
+  as OS abertas da unidade) + `natureza=None` passa a cair em `"N/A"` (antes
+  virava chave `None` — acontece quando a API devolve null).
+- `app/services/mcp_server.py`: docstring do tool `get_tempo_real` atualizada
+  (o MCP repassa o JSON do endpoint — sem mudança de contrato).
+- `tests/test_tempo_real.py`: 5 testes (fake do `ProxximaClient` via
+  monkeypatch — sem chamada real à API): filtro por unidade, exclui
+  fechadas/canceladas, `None`→N/A, regressão das chaves originais, unidade
+  inválida. Suíte: **122 testes passando**.
+
+### Resultado ao vivo (Consulta no Postgres, ~11h, estado do sync 10:30)
+
+- SEM ACESSO em aberto: **CG = 22**, **LS = 7** (mais 159 em outras unidades
+  que o GetAll retorna — fora do escopo).
+
+### Pendências (fora desta rota)
+
+- Sheets: `credencial.json` da service account não existe na AWS (o bot viu
+  503 em `/planilha/abas`) — copiar arquivo ou usar
+  `SHEETS_SERVICE_ACCOUNT_JSON` no `.env`.
+- Fase 3/4 (skill persona + cron) — ver seção Fase 2.
 
 ## Material de Escala Setembro 2026
 

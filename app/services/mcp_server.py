@@ -120,9 +120,10 @@ def get_status_unidade(
 def get_tempo_real(unidade: str) -> str:
     """Dados em TEMPO REAL direto da API Proxxima (sem usar o banco). Use para
     panorama do dia, situação atual de uma unidade, ou quando precisar de dados
-    frescos/atualizados. Retorna: abertas agora (por status), encerradas ontem,
-    encerradas hoje (com quebra por natureza e produtiva/improdutiva), abertas
-    hoje (por natureza), SLA vencido e sem técnico.
+    frescos/atualizados. Retorna: abertas agora (total, por status e POR
+    NATUREZA — ex.: quantas SEM ACESSO estão abertas neste momento), encerradas
+    ontem, encerradas hoje (com quebra por natureza e produtiva/improdutiva),
+    abertas hoje (por natureza), SLA vencido e sem técnico.
 
     Args:
         unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
