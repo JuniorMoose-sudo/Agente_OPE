@@ -20,9 +20,11 @@ from sqlalchemy.orm import Session
 from app.models.banco_horas_semanal import BancoHorasSemanal
 from app.models.infracao import Infracao
 from app.models.inspecao import Inspecao
+from app.models.metrica_totvs import MetricaTotvs
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
 from app.models.solicitacao_servico import SolicitacaoServico
 from app.jobs.sync_proxxima import _is_aberta
+from app.services.totvs_client import REPORT_PONTUACAO_DIA_TECNICO, TotvsClient
 
 # Limites de alerta — calibrados com o usuário em 2026-08-15.
 # LIMITE_REABERTURA = 1: qualquer reabertura em menos de 30 dias para o
@@ -177,6 +179,69 @@ def buscar_ultima_inspecao(db: Session, tecnico: str) -> dict | None:
         "data_inspecao": reg.data_inspecao,
         "pontuacao": float(reg.pontuacao) if reg.pontuacao is not None else None,
         "inspetor": reg.inspetor,
+    }
+
+
+def buscar_pontuacao_totvs(
+    db: Session, tecnico: str, periodo_de: date, periodo_ate: date
+) -> dict | None:
+    """Pontuação TOTVS (GoodData) do técnico no período.
+
+    Busca o snapshot mais recente da tabela ``metrica_totvs`` (report 2837323),
+    parseia o ``xtab_data`` hierárquico e filtra por técnico + período.
+
+    Retorna dict com:
+    - ``pontuacao_media``: média das pontuações no período
+    - ``pontuacao_total``: soma das pontuações no período
+    - ``dias_com_dados``: quantos dias o técnico aparece
+    - ``detalhes``: lista de ``{"data": ..., "pontuacao": ...}`` (últimos 10)
+    ou ``None`` se não houver dados.
+    """
+    from datetime import datetime as _dt
+
+    reg = db.scalars(
+        select(MetricaTotvs)
+        .where(MetricaTotvs.report_id == REPORT_PONTUACAO_DIA_TECNICO)
+        .order_by(MetricaTotvs.data_referencia.desc())
+        .limit(1)
+    ).first()
+    if not reg or not reg.payload:
+        return None
+
+    xtab = reg.payload.get("xtab_data", reg.payload)
+    dados = TotvsClient.parse_xtab_data(xtab)
+
+    registros = []
+    for r in dados:
+        if r.get("tecnico") != tecnico:
+            continue
+        try:
+            data_ref = _dt.strptime(r["data"], "%d/%m/%Y").date()
+        except (ValueError, KeyError):
+            continue
+        if data_ref < periodo_de or data_ref > periodo_ate:
+            continue
+        try:
+            pontuacao = float(r.get("pontuacao", 0))
+        except (ValueError, TypeError):
+            pontuacao = 0.0
+        registros.append({"data": data_ref, "pontuacao": pontuacao})
+
+    if not registros:
+        return None
+
+    total = sum(r["pontuacao"] for r in registros)
+    media = total / len(registros)
+    registros_ordenados = sorted(registros, key=lambda x: x["data"], reverse=True)
+
+    return {
+        "pontuacao_media": round(media, 2),
+        "pontuacao_total": round(total, 2),
+        "dias_com_dados": len(registros),
+        "detalhes": [
+            {"data": str(r["data"]), "pontuacao": r["pontuacao"]}
+            for r in registros_ordenados[:10]
+        ],
     }
 
 

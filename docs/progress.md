@@ -1,10 +1,138 @@
 # Progresso — Agente de apoio à decisão operacional
 
-Última atualização: 2026-08-16
+Última atualização: 2026-08-28
+
+## Sprint Hermes — Fase 1: servidor MCP (motor do Hermes Agent)
+
+Status: **concluído** (117 testes passando, transporte MCP validado via stdio).
+
+Decisões do usuário (2026-08-28): Hermes Agent substitui o opencode como interface
+principal; rodará na instância AWS Ubuntu (t3.micro) com acesso a todas as APIs;
+Telegram primeiro; disparos programados (resumo diário + varredura de alertas);
+provider Gemini (chave atual); stack inteira (backend+Postgres+jobs+Hermes) na AWS.
+
+### Feito
+
+- `app/services/mcp_server.py`: servidor MCP `agente-ope` (FastMCP, transporte stdio,
+  execução `python -m app.services.mcp_server`).
+  - Expõe as mesmas 5 tools do plugin do opencode: `get_diagnostico_tecnico`,
+    `get_status_unidade`, `get_tempo_real`, `get_planilha`, `get_relatorio_semanal`.
+  - É apenas orquestrador: monta URL/corpo e chama o backend local
+    (`OPS_API_URL`, default `http://localhost:8100`) com `Authorization: Bearer
+    <OPS_API_TOKEN>` — mantém separação sync/serve; nenhuma API externa chamada daqui.
+  - `_semana_atual()` replica o default do plugin (segunda–domingo local).
+  - Erros mapeados: 401/403 → `APIError` ("rejeitou o token"), 503 → `APIError`
+    ("sem OPS_API_TOKEN"), demais não-2xx propagam `HTTPStatusError`.
+  - `get_relatorio_semanal` devolve `download_url` montado a partir de `API_BASE`.
+- `tests/test_mcp_server.py`: 19 testes — registro das 5 tools, `call_tool` via
+  FastMCP, semana atual (default), mapeamento args→URL (incl. URL-encoding de
+  espaços/acentos), header Bearer (com/sem token) e erros 401/403/503/5xx.
+- `requirements.txt`: `fastmcp>=3.4` (instalado fastmcp 3.4.7 + mcp 1.29.1).
+- `.env.example`: comentário indicando que `OPS_API_URL`/`OPS_API_TOKEN` também
+  servem o MCP server.
+
+### Validação
+
+- pytest: **117 passed** (98 anteriores + 19 novos).
+- Smoke test real via cliente `mcp` SDK (stdio): as 5 tools aparecem registradas;
+  chamada sem backend sobe corretamente `ConnectError` (esperado — backend local
+  desligado).
+
+### Pendências (próximas fases)
+
+- Fase 0: backend+Postgres+jobs na AWS, `.env` de produção, validar syncs com os
+  números conhecidos.
+- Fase 2: instalar Hermes na AWS (Gemini, MCP config, gateway Telegram,
+  toolsets restritos).
+- Fase 3: skill/persona consultiva + validação com as perguntas do Sprint 5.
+- Fase 4: cron (resumo diário 07:30 + varredura de alertas 09:00/17:00).
+- Fase 5: docs/transição (default_agent do opencode).
+
+## Material de Escala Setembro 2026
+
+Status: **concluído** (material gerado e salvo em Downloads).
+
+### O que foi feito
+
+- Lidas as abas `Escala Campina Grande Setembro` e `Escala Lagoa Seca Setembro` do Google Sheets.
+- Análise das mudanças: T-1 (08-12/14-18) → T-4 (08-12/13:12-18), ganho de 48 min/dia.
+- Plantão (T-9) nos domingos para cobertura.
+- DSR distribuído durante a semana, BAN aos sábados.
+- Material gerado: `C:\Users\proxx\Downloads\Escala_Setembro_2026_Apresentacao.docx` (12 páginas, 9 seções).
+
+### Conteúdo do material
+
+1. Por que mudamos a escala (acúmulo de +16.7 OS/dia em CG)
+2. Situação atual (Agosto)
+3. O que muda em Setembro (T-4, ganho 48 min/dia)
+4. Nova escala Campina Grande (28 técnicos, 1 em férias)
+5. Nova escala Lagoa Seca (11 técnicos)
+6. Como funciona o T-4 (comparativo de turnos)
+7. Impacto na produtividade (projeção de ganho)
+8. Expectativas e metas
+9. Perguntas e Respostas
+
+### Arquivo gerado
+
+- `C:\Users\proxx\Downloads\Escala_Setembro_2026_Apresentacao.docx`
+
+### Notas
+
+- Dados do cabeçalho das escalas parecem inconsistentes (datas de julho/ago em vez de set), mas os dados dos técnicos estão corretos.
+- Servidor Aniel instável durante a sessão (timeouts recorrentes).
+
+## TOTVS Analytics — Parser hierárquico corrigido + integração no diagnóstico
+
+## TOTVS Analytics — Parser hierárquico corrigido + integração no diagnóstico
+
+Status: **concluído** (parser corrigido, 98 testes passando, dados integrados no endpoint).
+
+### Bug corrigido: offsets locais no parser GoodData
+
+O parser `_build_row_map` e `_build_col_map` em `totvs_client.py` tratava os `index` dos nós da árvore GoodData como **índices absolutos**, mas eles são **locais** (0-based dentro de cada grupo). Cada grupo tem um campo `first` que dá o offset absoluto.
+
+**Impacto**: sem o offset, todos os 17 grupos mapeavam para as mesmas posições (0-N), causando sobreposição. Resultado: 6729 registros com unidade vazia em vez de 17 unidades mapeadas corretamente.
+
+**Correção**: `result[local_idx + group["first"]]` em vez de `result[local_idx]`.
+
+### Dados sincronizados
+
+- **Pontuação por Dia x Técnico e Unidade** (report 2837323): **6.849 registros** não-zero, **17 unidades**, **492 técnicos**.
+- **KPI Reparos** (report 4890627): 3 linhas.
+- **Premiação Supervisor** (report 1464793): 1 linha.
+- Sync completo via `sync_totvs()` — dados persistidos no Postgres (`metrica_totvs`).
+
+### Integração no diagnóstico e relatório
+
+- `cruzamento.py`: nova função `buscar_pontuacao_totvs(db, tecnico, periodo_de, periodo_ate)` — lê o snapshot mais recente de `metrica_totvs` (report 2837323), parseia o `xtab_data` hierárquico, filtra por técnico + período. Retorna média, total, dias com dados, e últimos 10 dias.
+- Schema `PontuacaoTotvsResumo` adicionado em `schemas/diagnostico.py`.
+- Endpoint `GET /diagnostico/tecnico/{nome}` agora retorna campo `pontuacao_totvs` com média, total, dias e detalhes.
+- `relatorio.py`: nova seção 10 "Pontuação TOTVS por Técnico" no relatório semanal:
+  - `_buscar_pontuacao_totvs_por_tecnico()` — lê o snapshot, filtra por unidade normalizada + período, agrega por técnico (média, total, dias, melhor, pior).
+  - Tabela com top 20 técnicos ordenados por média.
+  - Resumo: média geral da unidade, técnicos acima/abaixo da meta (≥7.0 / <7.0).
+  - Fontes atualizadas na seção 11 (Observações) para incluir TOTVS Analytics.
+- Validado com FLAVIO NASCIMENTO VIEIRA: média 6.93, 39 dias com dados, 270.43 total.
+- Relatório ID 6 gerado com sucesso para CAMPINA GRANDE (11/08-17/08/2026) — seção TOTVS com dados reais.
+
+### Testes
+
+- 98 testes pytest passando (93 existentes + 5 novos para o parser hierárquico).
+- `TestParseHierarquico`: offset 2 grupos, 3 grupos, col offset, skip zeros, sem unidade vazia.
+- Robustez: parser agora trata `0` numérico além de `"0"` string.
+
+### Arquivos alterados
+
+- `app/services/totvs_client.py`: `_build_row_map`, `_build_col_map` com offset; robustez zero.
+- `app/services/cruzamento.py`: `buscar_pontuacao_totvs` + imports.
+- `app/services/relatorio.py`: `_buscar_pontuacao_totvs_por_tecnico`, seção 10 no relatório.
+- `app/schemas/diagnostico.py`: `PontuacaoTotvsResumo`.
+- `app/routers/diagnostico.py`: chamada + resposta.
+- `tests/test_totvs_client.py`: 5 novos testes hierárquicos.
 
 ## Sprint 7 — Robustez
 
-Status: **concluído** (testes pytest expandidos de 31 para 82; commit pendente).
+Status: **concluído** (testes pytest expandidos de 31 para 98; TOTVS integrado).
 
 ### Feito
 
@@ -18,7 +146,9 @@ Status: **concluído** (testes pytest expandidos de 31 para 82; commit pendente)
   - `TestLogicaCalculo` — lógica de cálculo de taxa produtividade, concentração top 3, e deltas de tendência.
   - `TestIsAbertaRelatorio` — `_is_aberta` do módulo relatorio (diferente do sync_proxxima).
   - `TestConstantesAlerta` — constantes LIMITE_REABERTURA=1, LIMITE_HE_SEMANAL=8.0, META_INSPECAO=7.0.
-- pytest: **82 passed** (31 existentes + 51 novos).
+- `tests/test_totvs_client.py` (novos):
+  - `TestParseHierarquico` — 5 testes cobrindo offset de grupos (2 e 3 grupos), offset de colunas (2 datas), skip de zeros, e garantia de unidade não vazia.
+- pytest: **98 passed** (31 originais + 51 Sprint 7 + 5 TOTVS + 11 extras).
 
 ### Observações sobre scheduling
 
@@ -30,7 +160,6 @@ Todos os three jobs estão ativos quando o uvicorn sobe. Não é necessário imp
 
 ### Pendências
 
-- **Integração TOTVS Analytics (GoodData)** — aguarda payload+response do F12 do usuário para mapear a API. Detalhes no plano de execução.
 - **Testes com DB real (SQLite em memória)** — adicionar fixtures SQLAlchemy para testar queries de `cruzamento.py` e `relatorio.py` contra banco de teste.
 
 ## Sprint 6 — Relatórios automáticos

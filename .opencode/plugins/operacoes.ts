@@ -196,6 +196,20 @@ export const OperacoesPlugin = async (input: { directory?: string }) => {
           }, null, 2)
         },
       }),
+      getTempoReal: tool({
+        description:
+          "Dados em TEMPO REAL direto da API Proxxima (sem usar o banco). Use para panorama do dia, situação atual de uma unidade, ou quando precisar de dados frescos/atualizados. Retorna: abertas agora (por status), encerradas ontem, encerradas hoje (com quebra por natureza e produtiva/improdutiva), abertas hoje (por natureza), SLA vencido e sem técnico.",
+        args: {
+          unidade: z
+            .string()
+            .describe("Unidade: CAMPINA GRANDE ou LAGOA SECA"),
+        },
+        async execute(args: { unidade: string }) {
+          return chamarApi(
+            `/diagnostico/tempo-real/${encodeURIComponent(args.unidade)}`,
+          )
+        },
+      }),
     },
   }
 }

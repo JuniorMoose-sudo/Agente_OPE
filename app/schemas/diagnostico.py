@@ -9,6 +9,15 @@ class InspecaoResumo(BaseModel):
     inspetor: str | None = None
 
 
+class PontuacaoTotvsResumo(BaseModel):
+    """Resumo da pontuação TOTVS (GoodData) de um técnico no período."""
+
+    pontuacao_media: float
+    pontuacao_total: float
+    dias_com_dados: int
+    detalhes: list[dict]
+
+
 class DiagnosticoTecnico(BaseModel):
     """Diagnóstico completo de um técnico cruzando as 3 fontes."""
 
@@ -21,6 +30,7 @@ class DiagnosticoTecnico(BaseModel):
     he_horas: float | None = None
     infracoes: int = 0
     ultima_inspecao: InspecaoResumo | None = None
+    pontuacao_totvs: PontuacaoTotvsResumo | None = None
     alerta: list[str]
 
 

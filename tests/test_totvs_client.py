@@ -94,6 +94,166 @@ class TestParseXtabData:
         assert resultado[0]["col_1"] == "valor2"
 
 
+class TestParseHierarquico:
+    """Testa o parser hierárquico (árvore GoodData com offset first/last)."""
+
+    @staticmethod
+    def _make_xtab(rows_children, rows_lookups, col_children, col_lookups, data):
+        return {
+            "rows": {
+                "tree": {"id": "root", "type": "normal", "first": 0,
+                         "last": len(data) - 1, "index": {},
+                         "children": rows_children},
+                "lookups": rows_lookups,
+            },
+            "columns": {
+                "tree": {"id": "root", "type": "normal", "first": 0,
+                         "last": len(data[0]) - 1, "index": {},
+                         "children": col_children},
+                "lookups": col_lookups,
+            },
+            "data": data,
+        }
+
+    @staticmethod
+    def _make_group(group_id, first, last, tech_map):
+        """Cria um nó de grupo (unidade) com index local 0-based."""
+        idx = {tid: [i] for i, (tid, _) in enumerate(tech_map)}
+        children = [
+            {"id": tid, "type": "normal", "first": i, "last": i,
+             "index": {}, "children": []}
+            for i, (tid, _) in enumerate(tech_map)
+        ]
+        return {"id": group_id, "type": "normal", "first": first,
+                "last": last, "index": idx, "children": children}
+
+    @staticmethod
+    def _make_date(date_id, first, last, n_metrics=1):
+        idx = {"metric_0": [i] for i in range(n_metrics)}
+        return {"id": date_id, "type": "normal", "first": first,
+                "last": last, "index": idx, "children": []}
+
+    def test_offset_two_groups(self):
+        """Dois grupos com offsets diferentes devem mapear todos os rows."""
+        groups = [
+            self._make_group("U1", first=0, last=1, tech_map=[
+                ("T1", "TECNICO A"), ("T2", "TECNICO B"),
+            ]),
+            self._make_group("U2", first=2, last=3, tech_map=[
+                ("T3", "TECNICO C"), ("T4", "TECNICO D"),
+            ]),
+        ]
+        rows_lookups = [
+            {"U1": "UNIDADE ALPHA", "U2": "UNIDADE BETA"},
+            {"T1": "TECNICO A", "T2": "TECNICO B",
+             "T3": "TECNICO C", "T4": "TECNICO D"},
+        ]
+        col_children = [self._make_date("D1", first=0, last=0)]
+        col_lookups = [{"D1": "01/07/2026"}]
+        data = [[10], [20], [30], [40]]
+
+        xtab = self._make_xtab(groups, rows_lookups, col_children, col_lookups, data)
+        resultado = TotvsClient.parse_xtab_data(xtab)
+        assert len(resultado) == 4
+        by_tech = {r["tecnico"]: r for r in resultado}
+        assert by_tech["TECNICO A"]["unidade"] == "UNIDADE ALPHA"
+        assert by_tech["TECNICO A"]["pontuacao"] == "10"
+        assert by_tech["TECNICO D"]["unidade"] == "UNIDADE BETA"
+        assert by_tech["TECNICO D"]["pontuacao"] == "40"
+
+    def test_offset_three_groups(self):
+        """Três grupos: valida que offsets se acumulam corretamente."""
+        groups = [
+            self._make_group("U1", first=0, last=0, tech_map=[
+                ("T1", "TEC A"),
+            ]),
+            self._make_group("U2", first=1, last=2, tech_map=[
+                ("T2", "TEC B"), ("T3", "TEC C"),
+            ]),
+            self._make_group("U3", first=3, last=3, tech_map=[
+                ("T4", "TEC D"),
+            ]),
+        ]
+        rows_lookups = [
+            {"U1": "GRUPO 1", "U2": "GRUPO 2", "U3": "GRUPO 3"},
+            {"T1": "TEC A", "T2": "TEC B", "T3": "TEC C", "T4": "TEC D"},
+        ]
+        col_children = [self._make_date("D1", first=0, last=0)]
+        col_lookups = [{"D1": "15/07/2026"}]
+        data = [[100], [200], [300], [400]]
+
+        xtab = self._make_xtab(groups, rows_lookups, col_children, col_lookups, data)
+        resultado = TotvsClient.parse_xtab_data(xtab)
+        assert len(resultado) == 4
+        by_tech = {r["tecnico"]: r for r in resultado}
+        assert by_tech["TEC A"]["unidade"] == "GRUPO 1"
+        assert by_tech["TEC B"]["unidade"] == "GRUPO 2"
+        assert by_tech["TEC C"]["unidade"] == "GRUPO 2"
+        assert by_tech["TEC D"]["unidade"] == "GRUPO 3"
+
+    def test_col_offset_two_dates(self):
+        """Duas datas com offsets diferentes nas colunas."""
+        groups = [
+            self._make_group("U1", first=0, last=0, tech_map=[
+                ("T1", "TEC A"),
+            ]),
+        ]
+        rows_lookups = [{"U1": "UNI"}, {"T1": "TEC A"}]
+        col_children = [
+            self._make_date("D1", first=0, last=0),
+            self._make_date("D2", first=1, last=1),
+        ]
+        col_lookups = [{"D1": "01/07/2026", "D2": "02/07/2026"}]
+        data = [[5, 15]]
+
+        xtab = self._make_xtab(groups, rows_lookups, col_children, col_lookups, data)
+        resultado = TotvsClient.parse_xtab_data(xtab)
+        assert len(resultado) == 2
+        by_date = {r["data"]: r for r in resultado}
+        assert by_date["01/07/2026"]["pontuacao"] == "5"
+        assert by_date["02/07/2026"]["pontuacao"] == "15"
+
+    def test_skip_zero_values(self):
+        """Valores zero ou None são ignorados."""
+        groups = [
+            self._make_group("U1", first=0, last=1, tech_map=[
+                ("T1", "TEC A"), ("T2", "TEC B"),
+            ]),
+        ]
+        rows_lookups = [{"U1": "UNI"}, {"T1": "TEC A", "T2": "TEC B"}]
+        col_children = [self._make_date("D1", first=0, last=0)]
+        col_lookups = [{"D1": "01/07/2026"}]
+        data = [["0"], ["10"]]
+
+        xtab = self._make_xtab(groups, rows_lookups, col_children, col_lookups, data)
+        resultado = TotvsClient.parse_xtab_data(xtab)
+        assert len(resultado) == 1
+        assert resultado[0]["tecnico"] == "TEC B"
+
+    def test_no_empty_unidade(self):
+        """Todas as linhas devem ter unidade preenchida (nenhum '')."""
+        groups = [
+            self._make_group("U1", first=0, last=1, tech_map=[
+                ("T1", "TEC A"), ("T2", "TEC B"),
+            ]),
+            self._make_group("U2", first=2, last=2, tech_map=[
+                ("T3", "TEC C"),
+            ]),
+        ]
+        rows_lookups = [
+            {"U1": "ALPHA", "U2": "BETA"},
+            {"T1": "TEC A", "T2": "TEC B", "T3": "TEC C"},
+        ]
+        col_children = [self._make_date("D1", first=0, last=0)]
+        col_lookups = [{"D1": "01/07/2026"}]
+        data = [[10], [0], [30]]
+
+        xtab = self._make_xtab(groups, rows_lookups, col_children, col_lookups, data)
+        resultado = TotvsClient.parse_xtab_data(xtab)
+        for r in resultado:
+            assert r["unidade"] != "", f"Linha {r} tem unidade vazia"
+
+
 class TestConstantesTotvs:
     """Verifica que as constantes de ID estão corretas."""
 

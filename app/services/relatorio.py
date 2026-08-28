@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.banco_horas_semanal import BancoHorasSemanal
+from app.models.metrica_totvs import MetricaTotvs
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
 from app.models.relatorio import Relatorio
 from app.models.solicitacao_servico import SolicitacaoServico
@@ -26,6 +27,7 @@ from app.services.cruzamento import (
     buscar_infracoes_unidade,
     normalizar_unidade,
 )
+from app.services.totvs_client import REPORT_PONTUACAO_DIA_TECNICO, TotvsClient
 
 _DIR_RELATORIOS = Path(settings.dir_relatorios or "relatorios")
 _NATUREZAS_EXCLUIDAS = ("RECOLHIMENTO", "RECOLHIMENTO AGENDADO")
@@ -377,6 +379,65 @@ def _buscar_tecnicos_com_he_e_recorrencia(db: Session, unidade: str, de: date, a
     return ambos
 
 
+def _buscar_pontuacao_totvs_por_tecnico(
+    db: Session, unidade: str, de: date, ate: date, limite: int = 20
+) -> list[dict]:
+    """Pontuação TOTVS por técnico da unidade no período.
+
+    Lê o snapshot mais recente de ``metrica_totvs`` (report 2837323),
+    parseia o xtab hierárquico e agrega por técnico.
+    """
+    from datetime import datetime as _dt
+
+    reg = db.scalars(
+        select(MetricaTotvs)
+        .where(MetricaTotvs.report_id == REPORT_PONTUACAO_DIA_TECNICO)
+        .order_by(MetricaTotvs.data_referencia.desc())
+        .limit(1)
+    ).first()
+    if not reg or not reg.payload:
+        return []
+
+    xtab = reg.payload.get("xtab_data", reg.payload)
+    dados = TotvsClient.parse_xtab_data(xtab)
+
+    agg: dict[str, dict] = {}
+
+    for r in dados:
+        r_unidade = normalizar_unidade(r.get("unidade", ""))
+        if r_unidade != unidade:
+            continue
+        try:
+            data_ref = _dt.strptime(r["data"], "%d/%m/%Y").date()
+        except (ValueError, KeyError):
+            continue
+        if data_ref < de or data_ref > ate:
+            continue
+        try:
+            pontuacao = float(r.get("pontuacao", 0))
+        except (ValueError, TypeError):
+            pontuacao = 0.0
+
+        tech = r.get("tecnico", "")
+        if tech not in agg:
+            agg[tech] = {"tecnico": tech, "total": 0.0, "dias": 0, "melhor": 0.0, "pior": 999.0}
+        agg[tech]["total"] += pontuacao
+        agg[tech]["dias"] += 1
+        agg[tech]["melhor"] = max(agg[tech]["melhor"], pontuacao)
+        agg[tech]["pior"] = min(agg[tech]["pior"], pontuacao)
+
+    lista = []
+    for item in agg.values():
+        item["media"] = round(item["total"] / item["dias"], 2) if item["dias"] > 0 else 0
+        item["total"] = round(item["total"], 2)
+        item["melhor"] = round(item["melhor"], 2)
+        item["pior"] = round(item["pior"], 2)
+        lista.append(item)
+
+    lista.sort(key=lambda x: x["media"], reverse=True)
+    return lista[:limite]
+
+
 # ── Gerador do relatório ───────────────────────────────────────────
 
 def gerar_relatorio_semanal(
@@ -610,11 +671,43 @@ def gerar_relatorio_semanal(
     else:
         _addParagrafo(doc, "  Nenhum protocolo recorrente no período.")
 
-    # 10. Observações e Fontes
-    _addSecao(doc, "10. Observações")
+    # 10. Pontuação TOTVS (GoodData)
+    pont_totvs = _buscar_pontuacao_totvs_por_tecnico(db, unidade_norm, periodo_de, periodo_ate)
+    _addSecao(doc, "10. Pontuação TOTVS por Técnico")
+    _addParagrafo(doc, "Média de pontuação diária (GoodData) por técnico no período.")
+    if pont_totvs:
+        _addTabela(doc,
+            ["Técnico", "Média", "Total", "Dias", "Melhor", "Pior"],
+            [
+                [
+                    item["tecnico"],
+                    f"{item['media']:.2f}",
+                    f"{item['total']:.2f}",
+                    str(item["dias"]),
+                    f"{item['melhor']:.2f}",
+                    f"{item['pior']:.2f}",
+                ]
+                for item in pont_totvs
+            ]
+        )
+        media_geral = sum(item["media"] for item in pont_totvs) / len(pont_totvs)
+        _addParagrafo(doc, f"Média geral da unidade: {media_geral:.2f}", negrito=True)
+
+        acima = [item for item in pont_totvs if item["media"] >= 7.0]
+        abaixo = [item for item in pont_totvs if item["media"] < 7.0]
+        if acima:
+            _addParagrafo(doc, f"Técnicos acima da meta (≥7.0): {len(acima)}/{len(pont_totvs)}")
+        if abaixo:
+            nomes = ", ".join(item["tecnico"] for item in abaixo[:5])
+            _addParagrafo(doc, f"Técnicos abaixo da meta (<7.0): {len(abaixo)}/{len(pont_totvs)} — {nomes}", negrito=True)
+    else:
+        _addParagrafo(doc, "  Nenhum dado de pontuação TOTVS no período.")
+
+    # 11. Observações e Fontes
+    _addSecao(doc, "11. Observações")
     _addParagrafos(doc, [
         "Relatório gerado automaticamente pelo Agente OPE.",
-        "Fontes: Proxxima (solicitações), painel-ope (HE/infrações), Excel de recorrência.",
+        "Fontes: Proxxima (solicitações), painel-ope (HE/infrações), Excel de recorrência, TOTVS Analytics (pontuação).",
         "Período de comparação: mesma duração imediatamente anterior.",
         "Para dúvidas ou aprofundamento, consulte o agente operacoes no opencode.",
         f"Gerado em: {date.today().strftime('%d/%m/%Y')}",

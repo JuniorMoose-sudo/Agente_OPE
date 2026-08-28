@@ -188,40 +188,60 @@ class TotvsClient:
         except ValueError as exc:
             raise TotvsRequestError(f"Resposta do report {report_id} não é JSON válido.") from exc
 
-    def get_data_result(self, data_result_path: str) -> dict[str, Any]:
+    def get_data_result(self, data_result_path: str, max_retries: int = 10, poll_interval: float = 2.0) -> dict[str, Any]:
         """Busca os dados brutos de um ``dataResult``.
+
+        O GoodData pode retornar HTTP 202 (processing) enquanto calcula.
+        Faz polling até ``max_retries`` vezes com ``poll_interval`` segundos.
 
         Args:
             data_result_path: Caminho relativo (ex: ``/gdc/md/.../dataResult/123``).
+            max_retries: Número máximo de tentativas (padrão 10).
+            poll_interval: Intervalo entre tentativas em segundos (padrão 2).
 
         Returns:
             Dict com ``xtab_data`` (dados em formato cross-tab).
         """
+        import time
+
         self.get_token()
 
         url = f"{BASE_URL}{data_result_path}" if data_result_path.startswith("/") else data_result_path
 
-        try:
-            response = self.client.get(
-                url,
-                headers=self._headers_base,
-                cookies=self._cookies_dict(),
-            )
-        except httpx.HTTPError as exc:
-            raise TotvsRequestError(f"Falha ao buscar dataResult: {exc}") from exc
+        last_status = None
+        for attempt in range(max_retries):
+            try:
+                response = self.client.get(
+                    url,
+                    headers=self._headers_base,
+                    cookies=self._cookies_dict(),
+                )
+            except httpx.HTTPError as exc:
+                raise TotvsRequestError(f"Falha ao buscar dataResult: {exc}") from exc
 
-        if response.status_code in (401, 403):
-            raise TotvsAuthError(
-                f"dataResult respondeu HTTP {response.status_code}: sessão inválida."
-            )
+            last_status = response.status_code
 
-        if response.status_code != 200:
-            raise TotvsRequestError(f"dataResult respondeu HTTP {response.status_code}.")
+            if response.status_code in (401, 403):
+                raise TotvsAuthError(
+                    f"dataResult respondeu HTTP {response.status_code}: sessão inválida."
+                )
 
-        try:
-            return response.json()
-        except ValueError as exc:
-            raise TotvsRequestError("Resposta do dataResult não é JSON válido.") from exc
+            if response.status_code == 202:
+                logger.info("[totvs] dataResult 202 (processing), tentativa %d/%d", attempt + 1, max_retries)
+                time.sleep(poll_interval)
+                continue
+
+            if response.status_code != 200:
+                raise TotvsRequestError(f"dataResult respondeu HTTP {response.status_code}.")
+
+            try:
+                return response.json()
+            except ValueError as exc:
+                raise TotvsRequestError("Resposta do dataResult não é JSON válido.") from exc
+
+        raise TotvsRequestError(
+            f"dataResult não ficou pronto após {max_retries} tentativas (último status: {last_status})."
+        )
 
     def execute_and_get_data(
         self,
@@ -244,24 +264,45 @@ class TotvsClient:
     def parse_xtab_data(xtab: dict) -> list[dict[str, str]]:
         """Converte ``xtab_data`` em lista de dicts legíveis.
 
-        O formato cross-tab do GoodData tem:
+        Suporta dois formatos do GoodData:
+
+        **1. Formato flat** (KPI, Premiação):
         - ``columns.lookups``: mapa de índice → nome da coluna
         - ``rows.lookups``: mapa de índice → nome da linha
         - ``data``: matriz de valores
 
+        **2. Formato hierárquico** (Pontuação por Dia x Técnico):
+        - ``columns.tree`` + ``columns.lookups[0..N]``: árvore de datas × métricas
+        - ``rows.tree`` + ``rows.lookups[0..N]``: árvore de unidades × técnicos
+        - ``data``: matriz de valores esparsa
+
         Retorna lista de dicts onde cada chave é o nome da coluna.
         """
-        col_lookups = xtab.get("columns", {}).get("lookups", [{}])
-        row_lookups = xtab.get("rows", {}).get("lookups", [{}])
+        cols = xtab.get("columns", {})
+        rows = xtab.get("rows", {})
         data = xtab.get("data", [])
 
-        # Mapeia índice → nome da coluna
+        col_tree = cols.get("tree")
+        row_tree = rows.get("tree")
+
+        # Formato hierárquico (tree presente)
+        if col_tree and row_tree:
+            return TotvsClient._parse_hierarquico(cols, rows, data)
+
+        # Formato flat (legado)
+        return TotvsClient._parse_flat(cols, rows, data)
+
+    @staticmethod
+    def _parse_flat(cols: dict, rows: dict, data: list) -> list[dict[str, str]]:
+        """Parser para formato flat (sem árvore)."""
+        col_lookups = cols.get("lookups", [{}])
+        row_lookups = rows.get("lookups", [{}])
+
         col_names: dict[int, str] = {}
         for lookup in col_lookups:
             for idx_str, nome in lookup.items():
                 col_names[int(idx_str)] = nome
 
-        # Mapeia índice → nome da linha
         row_names: dict[int, str] = {}
         for lookup in row_lookups:
             for idx_str, nome in lookup.items():
@@ -270,7 +311,6 @@ class TotvsClient:
         resultados = []
         for row_idx, row_data in enumerate(data):
             row_dict: dict[str, str] = {}
-            # Adiciona o nome da linha se houver
             if row_idx in row_names:
                 row_dict["linha"] = row_names[row_idx]
             for col_idx, valor in enumerate(row_data):
@@ -279,6 +319,105 @@ class TotvsClient:
             resultados.append(row_dict)
 
         return resultados
+
+    @staticmethod
+    def _parse_hierarquico(cols: dict, rows: dict, data: list) -> list[dict[str, str]]:
+        """Parser para formato hierárquico com árvore GoodData.
+
+        Returns:
+            Lista de dicts, cada um representando um ponto de dados:
+            ``{"unidade": "...", "tecnico": "...", "data": "...", "pontuacao": "..."}``
+        """
+        row_lookups = rows.get("lookups", [])
+        col_lookups = cols.get("lookups", [])
+        row_tree = rows.get("tree", {})
+        col_tree = cols.get("tree", {})
+
+        # 1. Mapeia row_idx -> (unidade, técnico)
+        row_map = TotvsClient._build_row_map(row_tree, row_lookups)
+
+        # 2. Mapeia col_idx -> data (DD/MM/YYYY)
+        col_map = TotvsClient._build_col_map(col_tree, col_lookups)
+
+        # 3. Extrai pontos de dados não-nulos
+        resultados = []
+        for row_idx, row_data in enumerate(data):
+            row_info = row_map.get(row_idx, {})
+            unidade = row_info.get("unidade", "")
+            tecnico = row_info.get("tecnico", "")
+
+            for col_idx, valor in enumerate(row_data):
+                if valor is None or valor == "0" or valor == 0:
+                    continue
+                col_info = col_map.get(col_idx, {})
+                data_ref = col_info.get("data", "")
+                resultados.append({
+                    "unidade": unidade,
+                    "tecnico": tecnico,
+                    "data": data_ref,
+                    "pontuacao": str(valor),
+                })
+
+        return resultados
+
+    @staticmethod
+    def _build_row_map(tree: dict, lookups: list[dict]) -> dict[int, dict]:
+        """Mapeia row_idx -> {"unidade": ..., "tecnico": ...} a partir da árvore.
+
+        A árvore GoodData tem 2 níveis:
+        - Filhos da raiz = unidades (cada um com ``first/last`` delimitando o
+          range de linhas e ``index`` mapeando ID→[índices_locais])
+        - Netos = técnicos (folhas com ``index`` vazio)
+
+        Os ``index`` dentro de cada grupo usam **índices locais** (0-based dentro
+        do grupo). O offset absoluto vem de ``group["first"]``.
+        """
+        result: dict[int, dict] = {}
+        row_unidades = lookups[0] if len(lookups) > 0 else {}
+        row_tecnicos = lookups[1] if len(lookups) > 1 else {}
+
+        root_children = tree.get("children", [])
+        for group in root_children:
+            group_id = group.get("id", "")
+            group_index = group.get("index", {})
+            unidade = row_unidades.get(group_id, group_id)
+            offset = group.get("first", 0)
+
+            for tecnico_id, local_indices in group_index.items():
+                tecnico = row_tecnicos.get(tecnico_id, tecnico_id)
+                for local_idx in local_indices:
+                    result[offset + local_idx] = {"unidade": unidade, "tecnico": tecnico}
+
+        return result
+
+    @staticmethod
+    def _build_col_map(tree: dict, lookups: list[dict]) -> dict[int, dict]:
+        """Mapeia col_idx -> {"data": ...} a partir da árvore.
+
+        A árvore de colunas tem 2 níveis:
+        - Filhos da raiz = datas (cada um com ``first/last`` delimitando o
+          range de colunas e ``index`` mapeando ID→[índices_locais])
+        - Netos = métricas (folhas com ``index`` vazio)
+
+        Assim como nas linhas, os ``index`` usam **índices locais** (0-based
+        dentro de cada nó de data). O offset absoluto vem de
+        ``date_node["first"]``.
+        """
+        result: dict[int, dict] = {}
+        col_dates = lookups[0] if len(lookups) > 0 else {}
+
+        root_children = tree.get("children", [])
+        for date_node in root_children:
+            date_id = date_node.get("id", "")
+            date_index = date_node.get("index", {})
+            data_str = col_dates.get(date_id, date_id)
+            offset = date_node.get("first", 0)
+
+            for metric_id, local_indices in date_index.items():
+                for local_idx in local_indices:
+                    result[offset + local_idx] = {"data": data_str}
+
+        return result
 
     def close(self) -> None:
         self.client.close()

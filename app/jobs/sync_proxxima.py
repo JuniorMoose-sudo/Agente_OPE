@@ -11,6 +11,7 @@ técnico (nome completo em maiúsculas), ``grupo_Area`` é a unidade,
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import SessionLocal
 from app.models.solicitacao_servico import SolicitacaoServico
-from app.services.proxxima_client import ProxximaClient
+from app.services.proxxima_client import ProxximaClient, ProxximaRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +148,33 @@ def sync_servicos(lookback_days: int | None = None) -> dict[str, int]:
     """Ponto de entrada do job: busca no Proxxima e grava no Postgres.
 
     Executa de forma síncrona (nunca dentro de um endpoint async).
+    Inclui retry com backoff para lidar com instabilidade do servidor Aniel.
     """
     days = lookback_days if lookback_days is not None else settings.proxxima_lookback_days
-    client = ProxximaClient(settings.proxxima_user, settings.proxxima_password)
-    try:
-        servicos = client.fetch_servicos(lookback_days=days)
-    finally:
-        client.close()
+    max_retries = 3
+    retry_delay = 10
+
+    for attempt in range(1, max_retries + 1):
+        client = ProxximaClient(settings.proxxima_user, settings.proxxima_password)
+        try:
+            servicos = client.fetch_servicos(lookback_days=days)
+            client.close()
+            break
+        except ProxximaRequestError as exc:
+            client.close()
+            if attempt < max_retries:
+                logger.warning(
+                    "[proxxima] Tentativa %d/%d falhou: %s. Retentando em %ds...",
+                    attempt, max_retries, exc, retry_delay,
+                )
+                time.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                logger.error(
+                    "[proxxima] Todas as %d tentativas falharam: %s",
+                    max_retries, exc,
+                )
+                raise
 
     db = SessionLocal()
     try:

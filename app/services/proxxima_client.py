@@ -308,7 +308,7 @@ class ProxximaClient:
         *,
         username_field: str | None = None,
         password_field: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = 90.0,
     ) -> None:
         self.username = username
         self.password = password
@@ -325,7 +325,7 @@ class ProxximaClient:
                 ),
             },
             follow_redirects=True,
-            timeout=httpx.Timeout(timeout),
+            timeout=httpx.Timeout(timeout, read=timeout),
         )
 
     @staticmethod
