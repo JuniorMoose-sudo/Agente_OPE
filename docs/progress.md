@@ -602,3 +602,29 @@ Status: **concluído** (sync validado com janela de 30 dias; aguarda validação
 
 - Commit `eda9a15` = Sprint 0. Sprint 1 commitado após validação do sync de 30 dias.
 - `httpx` e `apscheduler` adicionados ao `requirements.txt`.
+
+## Fase 4 — Cron de resumo e alertas no Hermes (2026-08-28)
+
+Status: **implementado e validado ponta a ponta** (entrega no Telegram confirmada nos logs do gateway; aguarda confirmação visual do usuário).
+
+### Feito
+
+- 3 jobs criados no `hermes cron` (scheduler do gateway, UTC-3):
+  - `94a08eebbd48` — **Resumo Diario OPE (07:30)**: `30 7 * * *`, entrega `telegram:6664094468`. Prompt: resumo diário com `get_tempo_real` (2 unidades) + `getStatusUnidade` (semana) — panorama agora (por natureza, destaque SEM ACESSO, SLA vencido, sem técnico), fechadas hoje, HE e recorrências da semana; números primeiro, consultivo, encerra com decisão do coordenador.
+  - `d3c002570220` — **Varredura Alertas OPE (09h)**: `0 9 * * *`, `--continuity`. Limites calibrados do Sprint 4: recorrência ≥1 reabertura, HE > 8h, inspeção < 7.0 (planilha via `getPlanilha`; se 503, informa indisponível).
+  - `f09fa0260230` — **Varredura Alertas OPE (17h)**: `0 17 * * *`, `--continuity` (mesmo prompt da manhã). Primeiro disparo real: **28/08 às 17:00**.
+- **Aprendizados de entrega** (importantes):
+  - `deliver=telegram` (sem chat) criado via CLI não resolve alvo → usar **`telegram:6664094468`** explícito (`no delivery target resolved for deliver=telegram`).
+  - **NÃO usar `hermes cron run` via ssh** para validar: o processo dono da execução é o CLI e morre quando a sessão ssh fecha → execução vira `unknown` e a entrega se perde (`Reclaimed 1 cron execution(s) whose owner process died`). Runs reais rodam no processo do gateway (dono estável) — exemplos `source=builtin` de 12:06/12:08 completando e entregando (`delivered to telegram:6664094468 via live adapter`).
+  - Validação por tick real: editar schedule para `*/2 * * * *`, observar o gateway disparar, e reverter — funcionou.
+
+### Validação ponta a ponta
+
+- Run de teste 12:06: job completou com 2694 chars; log do gateway: `12:07:23 delivered to telegram:6664094468 via live adapter`.
+- Run extra 12:08 (tick residual antes do revert) também entregue — usuário deve ter recebido **dois** resumos no Telegram (~12:07 e ~12:09).
+
+### Pendências
+
+- Confirmação visual do usuário (mensagens ~12:07/12:09 no bot).
+- Observar o primeiro disparo automático da **varredura das 17:00** de 28/08 (valida a rotina noturna + `--continuity`).
+- Inspeção na varredura depende da credencial do Sheets na AWS (pendência conhecida).
