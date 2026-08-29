@@ -23,6 +23,9 @@ from app.schemas.diagnostico import (
     AgendadosResumo,
     ComparativoUnidades,
     DiagnosticoTecnico,
+    EncerradaNatureza,
+    EncerradasPorDia,
+    EncerradasResumo,
     InspecaoResumo,
     PontuacaoEquipe,
     PontuacaoEquipeResumo,
@@ -471,3 +474,119 @@ async def pontuacao_equipes(
     """
     dia = data or datetime.now(TimeZone("America/Sao_Paulo")).date()
     return _agregar_pontuacao(db, unidade, dia, resumo=resumo)
+
+
+def _enclus_dia(coluna: Any, de: date, ate: date) -> Any:
+    """Filtro por data em America/Sao_Paulo: dia em [de, ate] (inclusive)."""
+    dia_br = func.timezone("America/Sao_Paulo", coluna).cast(Date)
+    return (dia_br >= de) & (dia_br <= ate)
+
+
+def _encerradas_por_periodo(db: Session, unidade: str, periodo_de: date, periodo_ate: date) -> EncerradasResumo:
+    """Encerradas (Fechada Produtiva/Improdutiva) e canceladas de uma unidade.
+
+    Filtra pela data de ENCERRAMENTO (``fechamento``); quando o registro não tem
+    encerramento, usa a abertura como fallback. Quebra por natureza e por dia.
+    """
+    unidade_normalizada = normalizar_unidade(unidade)
+
+    cond_fechado = (
+        (SolicitacaoServico.fechamento.is_not(None) & _enclus_dia(SolicitacaoServico.fechamento, periodo_de, periodo_ate))
+        | (SolicitacaoServico.fechamento.is_(None) & _enclus_dia(SolicitacaoServico.abertura, periodo_de, periodo_ate))
+    )
+
+    linhas = db.execute(
+        select(SolicitacaoServico.natureza, SolicitacaoServico.status, SolicitacaoServico.fechamento, SolicitacaoServico.abertura)
+        .where(
+            (SolicitacaoServico.unidade.ilike(f"%{unidade_normalizada}%"))
+            & cond_fechado
+            & (SolicitacaoServico.status.is_not(None))
+            & (SolicitacaoServico.status.startswith("Fechada") | (SolicitacaoServico.status == "Cancelado"))
+        )
+    ).all()
+
+    por_natureza: dict[str, dict[str, int]] = {}
+    por_dia: dict[date, dict[str, int]] = {}
+    produtivas = improdutivas = fechadas_sem_classificacao = canceladas = 0
+
+    for linha in linhas:
+        natureza, status = linha.natureza, linha.status
+        fechamento, abertura = linha.fechamento, linha.abertura
+        nat = natureza or "SEM NATUREZA"
+        item = por_natureza.setdefault(nat, {"total": 0, "produtivas": 0, "improdutivas": 0, "canceladas": 0})
+        item["total"] += 1
+
+        dia_ref: datetime | None = fechamento or abertura
+        if dia_ref is not None:
+            dia = dia_ref.astimezone(TimeZone("America/Sao_Paulo")).date()
+        else:
+            dia = periodo_de
+        dia_item = por_dia.setdefault(dia, {"total": 0, "produtivas": 0, "improdutivas": 0, "canceladas": 0})
+        dia_item["total"] += 1
+
+        if status == "Cancelado":
+            canceladas += 1
+            item["canceladas"] += 1
+            dia_item["canceladas"] += 1
+        else:
+            if status.startswith("Fechada Produtiva"):
+                produtivas += 1
+                item["produtivas"] += 1
+                dia_item["produtivas"] += 1
+            elif status.startswith("Fechada Improdutiva"):
+                improdutivas += 1
+                item["improdutivas"] += 1
+                dia_item["improdutivas"] += 1
+            else:  # Fechada sem classificação prod/improd
+                fechadas_sem_classificacao += 1
+
+    total_encerradas = sum(
+        1 for linha in linhas if (linha.status or "").startswith("Fechada")
+    )
+    taxa = None
+    if (produtivas + improdutivas) > 0:
+        taxa = round(produtivas / (produtivas + improdutivas), 4)
+
+    lista_natureza = sorted(
+        (
+            EncerradaNatureza(natureza=n, **v)
+            for n, v in por_natureza.items()
+        ),
+        key=lambda en: (-en.total, en.natureza),
+    )
+    lista_dia = sorted(
+        (
+            EncerradasPorDia(data=d, **v)
+            for d, v in por_dia.items()
+        ),
+        key=lambda ed: ed.data,
+    )
+
+    return EncerradasResumo(
+        unidade=unidade_normalizada,
+        periodo_de=periodo_de,
+        periodo_ate=periodo_ate,
+        total_encerradas=total_encerradas,
+        produtivas=produtivas,
+        improdutivas=improdutivas,
+        canceladas=canceladas,
+        taxa_produtiva=taxa,
+        por_natureza=lista_natureza,
+        por_dia=lista_dia,
+    )
+
+
+@router.get("/encerradas/{unidade}", response_model=EncerradasResumo)
+async def encerradas_periodo(
+    unidade: str,
+    periodo_de: date = Query(..., description="Início do período (YYYY-MM-DD)"),
+    periodo_ate: date = Query(..., description="Fim do período (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+) -> EncerradasResumo:
+    """Solicitações encerradas no período, por natureza e por dia.
+
+    Filtra pela data de encerramento (``dataHora_Encerramento_OS``). Encerradas
+    = Fechada Produtiva + Fechada Improdutiva; canceladas saem à parte.
+    Use para o panorama de "encerradas da semana" por natureza.
+    """
+    return _encerradas_por_periodo(db, unidade, periodo_de, periodo_ate)

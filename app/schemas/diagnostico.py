@@ -83,6 +83,47 @@ class PontuacaoEquipeResumo(BaseModel):
     equipes: list[PontuacaoEquipe]
 
 
+class EncerradaNatureza(BaseModel):
+    """Encerradas de uma natureza no período (fechadas prod/improd + canceladas)."""
+
+    natureza: str
+    total: int
+    produtivas: int
+    improdutivas: int
+    canceladas: int
+
+
+class EncerradasPorDia(BaseModel):
+    """Encerradas agrupadas por dia do período."""
+
+    data: date
+    total: int
+    produtivas: int
+    improdutivas: int
+    canceladas: int
+
+
+class EncerradasResumo(BaseModel):
+    """Solicitações encerradas no período, por unidade.
+
+    Filtra pela data de encerramento (``dataHora_Encerramento_OS`` do GetAll,
+    coluna ``fechamento``). "Encerradas" = status Fechada Produtiva /
+    Fechada Improdutiva (canceladas saem à parte). A taxa de produtividade é
+    produtivas / (produtivas + improdutivas).
+    """
+
+    unidade: str
+    periodo_de: date
+    periodo_ate: date
+    total_encerradas: int
+    produtivas: int
+    improdutivas: int
+    canceladas: int
+    taxa_produtiva: float | None
+    por_natureza: list[EncerradaNatureza]
+    por_dia: list[EncerradasPorDia]
+
+
 class DiagnosticoTecnico(BaseModel):
     """Diagnóstico completo de um técnico cruzando as 3 fontes."""
 

@@ -81,7 +81,7 @@ class FakeClient:
 
 
 class TestFerramentasRegistradas:
-    def test_nove_ferramentas(self):
+    def test_dez_ferramentas(self):
         tools = asyncio.run(mcp_server.mcp.list_tools())
         nomes = {t.name for t in tools}
         assert nomes == {
@@ -94,6 +94,7 @@ class TestFerramentasRegistradas:
             "get_recorrencia_por_problema",
             "get_atendimentos_agendados",
             "get_pontuacao_equipe",
+            "get_encerradas_periodo",
         }
 
     def test_call_tool_via_fastmcp(self, monkeypatch):
@@ -206,6 +207,20 @@ class TestMapeamentoUrls:
         mcp_server.get_pontuacao_equipe("CAMPINA GRANDE", "2026-08-29", resumo=False)
         assert self.capturado["path"] == (
             "/diagnostico/pontuacao/CAMPINA%20GRANDE?data=2026-08-29&resumo=false"
+        )
+
+    def test_encerradas_periodo_explicita(self):
+        mcp_server.get_encerradas_periodo("CAMPINA GRANDE", "2026-08-24", "2026-08-30")
+        assert self.capturado["path"] == (
+            "/diagnostico/encerradas/CAMPINA%20GRANDE"
+            "?periodo_de=2026-08-24&periodo_ate=2026-08-30"
+        )
+
+    def test_encerradas_periodo_padrao_semana(self, sexta_28_ago):
+        mcp_server.get_encerradas_periodo("LAGOA SECA")
+        assert self.capturado["path"] == (
+            f"/diagnostico/encerradas/LAGOA%20SECA"
+            f"?periodo_de={SEGUNDA}&periodo_ate={DOMINGO}"
         )
 
     def test_planilha_sem_aba(self):

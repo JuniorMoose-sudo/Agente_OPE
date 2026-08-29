@@ -238,6 +238,32 @@ def get_pontuacao_equipe(
 
 
 @mcp.tool()
+def get_encerradas_periodo(
+    unidade: str,
+    periodo_de: Optional[str] = None,
+    periodo_ate: Optional[str] = None,
+) -> str:
+    """Solicitações ENCERRADAS de uma unidade no período (ex.: semana), com
+    quebra por NATUREZA e por DIA. Filtra pela data de encerramento
+    (dataHora_Encerramento_OS/coluna fechamento). Retorna total encerradas
+    (Fechada Produtiva + Fechada Improdutiva), canceladas à parte, taxa de
+    produtividade e os detalhamentos. Use para perguntas do tipo 'quanto
+    encerramos na semana por natureza' ou panos de relatório de encerramento.
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        periodo_de: Início do período (YYYY-MM-DD). Se omitido, a semana atual.
+        periodo_ate: Fim do período (YYYY-MM-DD). Se omitido, a semana atual.
+    """
+    de, ate = _semana_atual()
+    params = (
+        f"periodo_de={quote(periodo_de or de)}"
+        f"&periodo_ate={quote(periodo_ate or ate)}"
+    )
+    return _chamar_api("GET", f"/diagnostico/encerradas/{quote(unidade, safe='')}?{params}")
+
+
+@mcp.tool()
 def get_planilha(aba: Optional[str] = None, limite: Optional[int] = None) -> str:
     """Lê dados da planilha Google Sheets. Primeiro chame sem aba para ver a
     lista de abas disponíveis. Depois chame com o nome da aba para ler os
