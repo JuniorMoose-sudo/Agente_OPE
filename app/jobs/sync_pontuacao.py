@@ -53,7 +53,7 @@ def _montar_linhas(payload: dict[str, Any], dias_olhar: set[str]) -> list[dict[s
         if dia not in dias_olhar:
             continue
         try:
-            data = date.strptime(dia, "%Y%m%d")
+            data = datetime.strptime(dia, "%Y%m%d").date()
         except ValueError:
             continue
         linhas.append(
@@ -95,8 +95,8 @@ def _sync_para_db(db: Session, payload: dict[str, Any], dias_olhar: set[str]) ->
 
 def _dias_da_semana(data_de: str, data_ate: str) -> set[str]:
     """Todos os YYYYMMDD de data_de..data_ate (inclusive)."""
-    de = date.strptime(data_de, "%Y-%m-%d")
-    ate = date.strptime(data_ate, "%Y-%m-%d")
+    de = datetime.strptime(data_de, "%Y-%m-%d").date()
+    ate = datetime.strptime(data_ate, "%Y-%m-%d").date()
     dias: set[str] = set()
     atual = de
     while atual <= ate:
