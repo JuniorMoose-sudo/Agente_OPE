@@ -776,3 +776,55 @@ LAGOA SECA: total 34, com_equipe 30, sem_equipe 4
 - Bot: sessao do Telegram precisa de **/new** para a sessao ativa reenumerar
   as 8 tools MCP (a sessao congela o toolset na criacao; restart do gateway nao
   atualiza sessao existente). O processo MCP ja roda o codigo novo.
+
+## Pontuação por dia das equipes (n8n aniel-aovivo) — 2026-08-29
+
+Status: **implementado + testado local** (aguarda deploy AWS e validação do
+usuário). Commit: em andamento.
+
+### Contexto / decisões do usuário
+
+- Pergunta que o agente não sabia responder: "pontuação por dia das equipes".
+  Meta definida pelo usuário: **8 pontos/dia de SEG a SEX** (sábado/domingo
+  **sem meta**) e **40 pontos/semana** (semana = SEG a DOM). Cada técnico = uma
+  equipe.
+- Fonte confirmada com o usuário: **painel n8n `n8n.proxxima.net`** (webhooks
+  públicos, sem auth) — HAR fornecido por ele. O webhook **`/webhook/aniel-aovivo`**
+  traz `fechSemana`: fechamentos da semana com `os`, `tecnico`, `uni`, `encDK`
+  (dia YYYYMMDD) e **`pontos`** por OS. **Pontuação do dia da equipe = soma dos
+  `pontos` dos fechamentos do dia.** Validação com o HAR: CG segunda = 160.54
+  (idêntico ao webhook ao vivo, `geradoEm 29/08/2026 11:30`).
+- `naoPontua` do payload = lista de técnicos que não participam (flag exposta,
+  não filtra a resposta — o agente decide).
+- Cobertura: CG 172 / LS 41 linhas (técnico×dia) só para a semana atual —
+  pontuação é proteção do momento, não histórico (para histórico seria TOTVS
+  2837323, que segue com `metrica_totvs` vazia).
+
+### Feito
+
+- `app/models/pontuacao_tecnico_dia.py`: tabela `pontuacao_tecnico_dia`
+  (tecnico, unidade, data, pontos Numeric(6,2), nao_pontua; unique
+  (tecnico, unidade, data)); criada via `create_all` no boot.
+- `app/services/aniel_client.py`: `AnielClient.fetch_aovivo()` (GET público,
+  valida chaves esperadas e o formato de `fechSemana`, loga contagens) +
+  `sumarizar_pontuacao()` (função pura soma por tecnico/unidade/dia).
+- `app/jobs/sync_pontuacao.py`: job **de 1h** (`next_run_time` imediato) →
+  baixa o aovivo, `_montar_linhas` soma+arredonda+flag `nao_pontua` filtrando
+  pela semana BR (SEG–DOM), upsert `ON CONFLICT (tecnico, unidade, data)`.
+  Default do dia usa `America/Sao_Paulo` (não UTC).
+- Endpoint `GET /diagnostico/pontuacao/{unidade}?data=` (`_agregar_pontuacao`):
+  por técnico, `pontos_dia` + `meta_dia` (None sáb/dom) + `cumpre_meta_dia`,
+  `ponto_semana` + `cumpre_meta_semana`, quebra diária `dias[]`, ordenado por
+  semana desc. Totais do dia/semana da unidade.
+- Tool MCP **get_pontuacao_equipe** (total: 9 tools). Wiring no `main.py`.
+- Testes novos: `test_aniel_client.py` (7), `test_pontuacao_sync.py` (7),
+  `test_pontuacao_endpoint.py` (10), MCP atualizado para 9 tools (3 novos).
+  **191 passed** (antes 165). Validação ao vivo (GET público): soma de CG na
+  segunda = 160.54, batendo com o HAR.
+
+### Pendências
+
+- Deploy AWS: `git push` local → servidor `git pull` → restart
+  (`agente-ope` + `hermes-gateway`) → curva ao vivo do sync e validação com o
+  usuário (ex.: pontuação de MATHEUS FERNANDES DA SILVA vs painel TOTVS/n8n).
+- Bot: sessão ativa precisa de **/new** para ver a 9ª tool (padrão recorrente).

@@ -6,6 +6,7 @@ Async e somente leitura do Postgres já sincronizado — juntam as três fontes
 
 from collections import Counter
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo as TimeZone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Date, func, select
@@ -15,6 +16,7 @@ from app.config import settings
 from app.db import get_db
 from app.security import exigir_token_ops
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
+from app.models.pontuacao_tecnico_dia import PontuacaoTecnicoDia
 from app.models.solicitacao_servico import SolicitacaoServico
 from app.schemas.diagnostico import (
     AgendadoNatureza,
@@ -22,6 +24,9 @@ from app.schemas.diagnostico import (
     ComparativoUnidades,
     DiagnosticoTecnico,
     InspecaoResumo,
+    PontuacaoEquipe,
+    PontuacaoEquipeResumo,
+    PontuacaoTecnicoDiaResumo,
     PontuacaoTotvsResumo,
     StatusUnidade,
 )
@@ -359,3 +364,105 @@ async def atendimentos_agendados(
     abertas (não fechadas/canceladas).
     """
     return _agendados_por_dia(db, unidade, data)
+
+
+META_PONTOS_DIA = 8.0
+META_PONTOS_SEMANA = 40.0
+
+
+def _meta_dia(data: date) -> float | None:
+    """Meta diária: 8 pontos de SEG a SEX; sábado/domingo não têm meta."""
+    return META_PONTOS_DIA if data.weekday() < 5 else None
+
+
+def _semana_do_dia(data: date) -> tuple[date, date]:
+    """Segunda e domingo da semana (SEG a DOM) que contém ``data``."""
+    segunda = data - timedelta(days=data.weekday())
+    return segunda, segunda + timedelta(days=6)
+
+
+def _agregar_pontuacao(db: Session, unidade: str, dia: date) -> PontuacaoEquipeResumo:
+    """Pontuação das equipes no dia e na semana, com metas (8/dia útil, 40/semana)."""
+    unidade_normalizada = normalizar_unidade(unidade)
+    semana_de, semana_ate = _semana_do_dia(dia)
+    meta_dia = _meta_dia(dia)
+
+    linhas = db.scalars(
+        select(PontuacaoTecnicoDia)
+        .where(
+            (PontuacaoTecnicoDia.unidade.ilike(f"%{unidade_normalizada}%"))
+            & (PontuacaoTecnicoDia.data >= semana_de)
+            & (PontuacaoTecnicoDia.data <= semana_ate)
+        )
+        .order_by(PontuacaoTecnicoDia.tecnico, PontuacaoTecnicoDia.data)
+    ).all()
+
+    por_tecnico: dict[str, dict] = {}
+    for linha in linhas:
+        tech = por_tecnico.setdefault(
+            linha.tecnico,
+            {
+                "nao_pontua": linha.nao_pontua,
+                "dias": [],
+                "ponto_semana": 0.0,
+                "pontos_dia": 0.0,
+            },
+        )
+        pontos = float(linha.pontos or 0)
+        pontos = round(pontos, 2)
+        tech["dias"].append(
+            PontuacaoTecnicoDiaResumo(
+                data=linha.data,
+                pontos=pontos,
+                nao_pontua=linha.nao_pontua,
+            )
+        )
+        tech["ponto_semana"] = round(tech["ponto_semana"] + pontos, 2)
+        if linha.data == dia:
+            tech["pontos_dia"] = pontos
+
+    equipes = [
+        PontuacaoEquipe(
+            tecnico=tecnico,
+            nao_pontua=info["nao_pontua"],
+            pontos_dia=info["pontos_dia"],
+            meta_dia=meta_dia,
+            cumpre_meta_dia=(info["pontos_dia"] >= meta_dia) if meta_dia is not None else None,
+            ponto_semana=info["ponto_semana"],
+            meta_semana=META_PONTOS_SEMANA,
+            cumpre_meta_semana=info["ponto_semana"] >= META_PONTOS_SEMANA,
+            dias=info["dias"],
+        )
+        for tecnico, info in por_tecnico.items()
+    ]
+    equipes.sort(key=lambda eq: (-eq.ponto_semana, eq.tecnico))
+
+    return PontuacaoEquipeResumo(
+        unidade=unidade_normalizada,
+        data=dia,
+        fonte="n8n aniel-aovivo (fechSemana) — sincronizado",
+        semana_de=semana_de,
+        semana_ate=semana_ate,
+        meta_dia=meta_dia,
+        meta_semana=META_PONTOS_SEMANA,
+        total_pontos_dia=round(sum(eq.pontos_dia for eq in equipes), 2),
+        total_pontos_semana=round(sum(eq.ponto_semana for eq in equipes), 2) if equipes else 0.0,
+        equipes=equipes,
+    )
+
+
+@router.get("/pontuacao/{unidade}", response_model=PontuacaoEquipeResumo)
+async def pontuacao_equipes(
+    unidade: str,
+    data: date | None = Query(default=None, description="Data de referência (YYYY-MM-DD, padrão: hoje)"),
+    db: Session = Depends(get_db),
+) -> PontuacaoEquipeResumo:
+    """Pontuação das equipes/técnicos da unidade no dia e na semana.
+
+    Fonte: webhook n8n ``aniel-aovivo`` sincronizado em ``pontuacao_tecnico_dia``.
+    A pontuação do dia da equipe é a soma dos ``pontos`` dos fechamentos do dia.
+    Metas: 8 pontos/dia de SEG a SEX (sábado/domingo sem meta); 40 pontos na
+    semana completa (SEG a DOM).
+    """
+    dia = data or datetime.now(TimeZone("America/Sao_Paulo")).date()
+    return _agregar_pontuacao(db, unidade, dia)

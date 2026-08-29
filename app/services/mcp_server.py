@@ -209,6 +209,28 @@ def get_atendimentos_agendados(
 
 
 @mcp.tool()
+def get_pontuacao_equipe(
+    unidade: str,
+    data: Optional[str] = None,
+) -> str:
+    """Pontuação das equipes/técnicos de uma unidade (fonte: painel n8n
+    aniel-aovivo, sincronizado). Retorna, para o dia e para a semana:
+    pontos de cada técnico, meta do dia (8 pontos de SEG a SEX; sábado e
+    domingo sem meta) e meta da semana (40 pontos, semana SEG a DOM), com
+    indicação de quem cumpriu cada meta e a quebra por dia. Use para perguntas
+    do tipo 'como está a pontuação hoje' / 'pontuação da semana das equipes'.
+    Técnicos também podem vir com `nao_pontua=true` (não participam do ranking).
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        data: Data de referência (YYYY-MM-DD). Se omitido, usa hoje.
+    """
+    params = f"data={quote(data, safe='')}" if data else ""
+    qs = f"?{params}" if params else ""
+    return _chamar_api("GET", f"/diagnostico/pontuacao/{quote(unidade, safe='')}{qs}")
+
+
+@mcp.tool()
 def get_planilha(aba: Optional[str] = None, limite: Optional[int] = None) -> str:
     """Lê dados da planilha Google Sheets. Primeiro chame sem aba para ver a
     lista de abas disponíveis. Depois chame com o nome da aba para ler os

@@ -41,6 +41,48 @@ class AgendadosResumo(BaseModel):
     por_natureza: list[AgendadoNatureza]
 
 
+class PontuacaoTecnicoDiaResumo(BaseModel):
+    """Ponto de um dia (data + pontos) de uma equipe/técnico."""
+
+    data: date
+    pontos: float
+    nao_pontua: bool = False
+
+
+class PontuacaoEquipe(BaseModel):
+    """Pontuação de uma equipe/técnico no dia e na semana (com metas)."""
+
+    tecnico: str
+    nao_pontua: bool = False
+    pontos_dia: float = 0.0
+    meta_dia: float | None  # None = fim de semana (sem meta)
+    cumpre_meta_dia: bool | None = None
+    ponto_semana: float
+    meta_semana: float
+    cumpre_meta_semana: bool
+    dias: list[PontuacaoTecnicoDiaResumo]
+
+
+class PontuacaoEquipeResumo(BaseModel):
+    """Pontuação das equipes de uma unidade no dia e na semana.
+
+    Fonte: webhook n8n ``aniel-aovivo`` (``fechSemana``), sincronizado em
+    ``pontuacao_tecnico_dia``. Metas: 8 pontos/dia de SEG a SEX (sábado e
+    domingo sem meta) e 40 pontos/semana (semana = SEG a DOM).
+    """
+
+    unidade: str
+    data: date
+    fonte: str
+    semana_de: date
+    semana_ate: date
+    meta_dia: float | None
+    meta_semana: float
+    total_pontos_dia: float
+    total_pontos_semana: float
+    equipes: list[PontuacaoEquipe]
+
+
 class DiagnosticoTecnico(BaseModel):
     """Diagnóstico completo de um técnico cruzando as 3 fontes."""
 
