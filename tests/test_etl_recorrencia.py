@@ -18,6 +18,7 @@ from app.etl.recorrencia import (
     _as_str,
     _ler_excel,
     _mapa_protocolo_tecnico_em_lotes,
+    importar_recorrencia,
 )
 
 COLUNAS = [
@@ -134,3 +135,61 @@ class TestJoinProtocoloTecnico:
         base = {f"{i:07d}": f"TECNICO {i}" for i in range(2500)}
         mapa = _mapa_protocolo_tecnico_em_lotes(list(base.keys()), self._buscar(base), lote=1000)
         assert len(mapa) == 2500
+
+
+def _linha_analitico(protocolo, problema, recorrencia="NÃO", cidade="CAMPINA GRANDE | PB"):
+    return [
+        protocolo, "01/08/2026 08:03:53", "01/08/2026 09:17:22", None, None,
+        problema, cidade, "UNIDADE CAMPINA GRANDE", "ETIQ", None, None, None,
+        None, None, None, None, recorrencia,
+    ]
+
+
+class FakeResult:
+    def __init__(self, linhas):
+        self._linhas = linhas
+
+    def all(self):
+        return self._linhas
+
+
+class FakeDB:
+    """Grava os statements e devolve o mapa protocolo->técnico no SELECT."""
+
+    def __init__(self, mapa_tecnico=None):
+        self.mapa_tecnico = mapa_tecnico or {}
+        self.executados = []
+
+    def execute(self, stmt):
+        self.executados.append(stmt)
+        if "SELECT" in str(stmt):
+            return FakeResult(list(self.mapa_tecnico.items()))
+        return FakeResult([])
+
+    def commit(self):
+        pass
+
+
+class TestImportarRecorrencia:
+    def test_importa_e_conta_recorrencias(self):
+        conteudo = _fazer_excel([
+            _linha_analitico("8687823", "OPERAÇÕES - SINAL ALTO", recorrencia="NÃO"),
+            _linha_analitico("8688088", "OPERAÇÕES - PROBLEMA NA REDE INTERNA", recorrencia="SIM"),
+        ])
+        db = FakeDB(mapa_tecnico={"8687823": "TEC A"})
+        res = importar_recorrencia(io.BytesIO(conteudo), db)
+        assert res["importadas"] == 2
+        assert res["sem_tecnico"] == 1
+        assert res["com_recorrencia"] == 1
+        insert = db.executados[-1]
+        assert "INSERT INTO ocorrencia_recorrencia" in str(insert)
+
+    def test_upsert_por_protocolo_nao_duplica(self):
+        """Regressão: o job diário reimporta o mês; deve usar ON CONFLICT (protocolo)."""
+        conteudo = _fazer_excel([_linha_analitico("8687823", "OPERAÇÕES - SINAL ALTO")])
+        db = FakeDB(mapa_tecnico={"8687823": "TEC A"})
+        importar_recorrencia(io.BytesIO(conteudo), db)
+        importar_recorrencia(io.BytesIO(conteudo), db)
+        insert = db.executados[-1]
+        assert "INSERT INTO ocorrencia_recorrencia" in str(insert)
+        assert "ON CONFLICT (protocolo) DO UPDATE" in str(insert)

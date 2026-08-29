@@ -19,6 +19,7 @@ from typing import Any
 
 import pandas as pd
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
@@ -130,7 +131,9 @@ def _buscar_mapa_protocolo_tecnico(db: Session, protocolos: list[str], lote: int
 def importar_recorrencia(caminho: str | Path, db: Session) -> dict[str, int]:
     """Importa o analítico de recorrência em `ocorrencia_recorrencia`.
 
-    Upsert por `protocolo` (chave única). Retorna contagens para log.
+    Upsert por `protocolo` (chave única): em execuções seguintes (o job roda
+    diariamente), os protocolos já existentes são atualizados, não duplicados.
+    Retorna contagens para log.
     """
     df = _ler_excel(caminho)
     protocolos = [p for p in (_as_protocolo(v) for v in df["Protocolo"]) if p]
@@ -139,7 +142,7 @@ def importar_recorrencia(caminho: str | Path, db: Session) -> dict[str, int]:
 
     importados = 0
     sem_tecnico = 0
-    por_protocolo: dict[str, OcorrenciaRecorrencia] = {}
+    por_protocolo: dict[str, dict] = {}
 
     for _, row in df.iterrows():
         protocolo = _as_protocolo(row["Protocolo"])
@@ -150,29 +153,34 @@ def importar_recorrencia(caminho: str | Path, db: Session) -> dict[str, int]:
         if tecnico is None:
             sem_tecnico += 1
 
-        por_protocolo[protocolo] = OcorrenciaRecorrencia(
-            protocolo=protocolo,
-            data_abertura=_as_datetime(row.get("Data abertura")),
-            data_fechamento=_as_datetime(row.get("Data fechamento")),
-            problema_fechamento=_as_str(row.get("Problema do fechamento")),
-            cidade=_as_str(row.get("Cidade")),
-            unidade=_as_str(row.get("Unidade")),
-            etiqueta=_as_str(row.get("Etiqueta")),
-            protocolo_anterior=_as_protocolo(row.get("Protocolo anterior")),
-            data_abertura_anterior=_as_datetime(row.get("Data abertura anterior")),
-            data_fechamento_anterior=_as_datetime(row.get("Data fechamento anterior")),
-            problema_fechamento_anterior=_as_str(row.get("Problema do fechamento anterior")),
-            dias_entre_os=_as_int(row.get("Dias entre as OS")),
-            e_recorrencia=e_recorrencia,
-            tecnico=tecnico,
-        )
+        por_protocolo[protocolo] = {
+            "protocolo": protocolo,
+            "data_abertura": _as_datetime(row.get("Data abertura")),
+            "data_fechamento": _as_datetime(row.get("Data fechamento")),
+            "problema_fechamento": _as_str(row.get("Problema do fechamento")),
+            "cidade": _as_str(row.get("Cidade")),
+            "unidade": _as_str(row.get("Unidade")),
+            "etiqueta": _as_str(row.get("Etiqueta")),
+            "protocolo_anterior": _as_protocolo(row.get("Protocolo anterior")),
+            "data_abertura_anterior": _as_datetime(row.get("Data abertura anterior")),
+            "data_fechamento_anterior": _as_datetime(row.get("Data fechamento anterior")),
+            "problema_fechamento_anterior": _as_str(row.get("Problema do fechamento anterior")),
+            "dias_entre_os": _as_int(row.get("Dias entre as OS")),
+            "e_recorrencia": e_recorrencia,
+            "tecnico": tecnico,
+        }
         importados += 1
 
-    # Upsert manual: SQLAlchemy não tem upsert nativo; por protocolo (unique),
-    # merge() atualiza ou insere.
-    for reg in por_protocolo.values():
-        db.merge(reg)
-    db.commit()
+    if por_protocolo:
+        cadastros = [por_protocolo[p] for p in protocolos if p in por_protocolo]
+        colunas = [k for k in cadastros[0]]
+        stmt = pg_insert(OcorrenciaRecorrencia).values(cadastros)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[OcorrenciaRecorrencia.protocolo],
+            set_={k: stmt.excluded[k] for k in colunas},
+        )
+        db.execute(stmt)
+        db.commit()
 
     logger.info(
         "[recorrencia] %d importadas, %d sem técnico resolvido (fora do lookback)",
@@ -180,5 +188,5 @@ def importar_recorrencia(caminho: str | Path, db: Session) -> dict[str, int]:
         sem_tecnico,
     )
     return {"importadas": importados, "sem_tecnico": sem_tecnico, "com_recorrencia": sum(
-        1 for r in por_protocolo.values() if r.e_recorrencia
+        1 for r in por_protocolo.values() if r["e_recorrencia"]
     )}
