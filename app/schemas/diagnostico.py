@@ -25,7 +25,8 @@ class DiagnosticoTecnico(BaseModel):
     periodo_de: date
     periodo_ate: date
     recorrencia_reaberturas: int
-    recorrencia_total_protocolos: int
+    recorrencia_os_no_analitico: int
+    recorrencia_contexto: str
     produtividade: dict
     he_horas: float | None = None
     infracoes: int = 0

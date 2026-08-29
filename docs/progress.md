@@ -625,9 +625,36 @@ Status: **implementado e validado ponta a ponta** (entrega no Telegram confirmad
 
 ### Pendências
 
+- **Renovar cookie do painel Operações ~a cada 4 dias** (expira 2026-09-01 17:05) — job alerta no Telegram se expirar.
 - Confirmação visual do usuário (mensagens ~12:07/12:09 no bot).
-- Observar o primeiro disparo automático da **varredura das 17:00** de 28/08 (valida a rotina noturna + `--continuity`).
+- Observar o primeiro disparo automático da **varredura das 17:00** de 28/08.
 - Inspeção na varredura depende da credencial do Sheets na AWS (pendência conhecida).
+- **Decisão de domínio pendente**: atribuir recorrência ao técnico da **OS atual** (feito hoje, validado) ou ao técnico da **OS anterior** (quem causou a reabertura) — questionar o coordenador antes de mudar.
+
+## Correção: rótulo de recorrência no diagnóstico por técnico (2026-08-28)
+
+### Problema relatado
+
+O agente respondeu que ALVARO CORREIA tinha 22 recorrências em agosto e que isso
+"concentrava 100% das recorrências de CG num único técnico". O coordenador negou:
+há recorrências de várias equipes.
+
+### Investigação (dados reais no Postgres)
+
+- **A atribuição JOIN estava CORRETA**: 33 técnicos distintos têm recorrência em CG
+  em ago/2026 (total 195). ALVARO CORREIA DE SOUSA NETO tem **4 recorrências**.
+- **Raiz do erro**: o campo JSON `recorrencia_total_protocolos` contava **todas as OS
+  do técnico no analítico** (22 — inclui as não-recorrentes), não as recorrências.
+  O nome induzia o LLM a ler "22 protocolos com recorrência" e a montar a narrativa.
+
+### Correção aplicada
+
+- Schema `DiagnosticoTecnico`: `recorrencia_total_protocolos` renomeado para
+  `recorrencia_os_no_analitico` + novo campo `recorrencia_contexto` (frase explícita:
+  quantas OS no analítico e quantas são recorrência).
+- Descrição da tool `getDiagnosticoTecnico` no plugin: documenta que para recorrências
+  do técnico o campo certo é `recorrencia_reaberturas`.
+- 131 testes verdes. Fix commitado junto.
 
 ## Rota Painel Operações — recorrência sem planilha (2026-08-28)
 

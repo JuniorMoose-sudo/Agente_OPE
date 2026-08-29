@@ -87,7 +87,7 @@ export const OperacoesPlugin = async (input: { directory?: string }) => {
     tool: {
       getDiagnosticoTecnico: tool({
         description:
-          "Diagnóstico completo de um técnico cruzando as 3 fontes: recorrência, produtividade, HE, infrações e última inspeção, com alertas. Use quando a pergunta for sobre um técnico específico.",
+          "Diagnóstico completo de um técnico cruzando as 3 fontes: recorrência, produtividade, HE, infrações e última inspeção, com alertas. Use quando a pergunta for sobre um técnico específico. VALIDAÇÃO: recorrencia_reaberturas = OS do técnico que são recorrência (é_recorrencia=SIM) no período; recorrencia_os_no_analitico = todas as OS do técnico listadas no analítico (inclui não-recorrentes) — para saber quantas recorrências o técnico tem, use recorrencia_reaberturas.",
         args: {
           nome_tecnico: z
             .string()

@@ -61,7 +61,12 @@ async def diagnostico_tecnico(
         periodo_de=periodo_de,
         periodo_ate=periodo_ate,
         recorrencia_reaberturas=rec_prod["reabriu_total"],
-        recorrencia_total_protocolos=rec_prod["total_protocolos"],
+        recorrencia_os_no_analitico=rec_prod["total_protocolos"],
+        recorrencia_contexto=(
+            f"No analítico do período constam {rec_prod['total_protocolos']} OS deste técnico; "
+            f"destas, {rec_prod['reabriu_total']} são recorrência (é_recorrencia=SIM). "
+            f"Recorrência NÃO é concentrada em um único técnico da unidade."
+        ),
         produtividade=buscar_produtividade(db, nome_tecnico, periodo_de, periodo_ate),
         he_horas=banco_horas["he_horas"],
         infracoes=banco_horas["infracoes"],
