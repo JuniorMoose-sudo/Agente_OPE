@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     proxxima_lookback_days: int = 30
     proxxima_sync_interval_seconds: int = 1800
     ope_session_cookie: str | None = None
+    # Cookie de sessão do painel Operações (operacoes.proxxima.net, bl_session)
+    # — recorrência analítica por unidade. Zoho SSO: sem usuário/senha de API,
+    # o acesso é pelo cookie do navegador (mesmo padrão do painel-ope).
+    operacoes_session_cookie: str | None = None
 
     # Token de acesso à própria API (Sprint 5) — enviado pelo plugin do agente
     # como `Authorization: Bearer <token>`. Nunca hardcoded, só via env.
