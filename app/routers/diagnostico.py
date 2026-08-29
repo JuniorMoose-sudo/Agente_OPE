@@ -6,6 +6,7 @@ Async e somente leitura do Postgres já sincronizado — juntam as três fontes
 
 from collections import Counter
 from datetime import date, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo as TimeZone
 
 from fastapi import APIRouter, Depends, Query
