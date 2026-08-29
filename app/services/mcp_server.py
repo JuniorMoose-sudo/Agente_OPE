@@ -117,6 +117,58 @@ def get_status_unidade(
 
 
 @mcp.tool()
+def get_recorrencia_por_problema(
+    unidade: str,
+    periodo_de: Optional[str] = None,
+    periodo_ate: Optional[str] = None,
+) -> str:
+    """Recorrências (é_recorrencia=SIM) de uma unidade quebradas por causa
+    ("Problema do fechamento"), com resumo em 3 categorias macro.
+    Sem HAR e sem lista de técnicos: tudo vem do Postgres.
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        periodo_de: Início do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+        periodo_ate: Fim do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+    """
+    de, ate = _semana_atual()
+    params = (
+        f"unidade={quote(unidade, safe='')}"
+        f"&periodo_de={quote(periodo_de or de)}"
+        f"&periodo_ate={quote(periodo_ate or ate)}"
+    )
+    return _chamar_api("GET", f"/recorrencia/por-problema?{params}")
+
+
+@mcp.tool()
+def get_ranking_recorrencia(
+    unidade: str,
+    periodo_de: Optional[str] = None,
+    periodo_ate: Optional[str] = None,
+    top: int = 5,
+) -> str:
+    """Ranking pronto de técnicos com mais recorrências (é_recorrencia=SIM) de
+    uma unidade no período — não precisa saber a lista de técnicos antes.
+    O campo `recorrencias` é o número de recorrências; `os_no_analitico` são
+    todas as OS do técnico no analítico (inclui as não-recorrentes, só contexto).
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        periodo_de: Início do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+        periodo_ate: Fim do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+        top: Quantos técnicos no ranking (padrão 5, máx 20).
+    """
+    de, ate = _semana_atual()
+    params = (
+        f"unidade={quote(unidade, safe='')}"
+        f"&periodo_de={quote(periodo_de or de)}"
+        f"&periodo_ate={quote(periodo_ate or ate)}"
+        f"&top={int(top)}"
+    )
+    return _chamar_api("GET", f"/recorrencia/ranking?{params}")
+
+
+@mcp.tool()
 def get_tempo_real(unidade: str) -> str:
     """Dados em TEMPO REAL direto da API Proxxima (sem usar o banco). Use para
     panorama do dia, situação atual de uma unidade, ou quando precisar de dados

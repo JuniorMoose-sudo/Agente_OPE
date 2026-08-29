@@ -656,6 +656,39 @@ há recorrências de várias equipes.
   do técnico o campo certo é `recorrencia_reaberturas`.
 - 131 testes verdes. Fix commitado junto.
 
+## Ranking de recorrência e quebra por problema (2026-08-28)
+
+Status: **implementado e com testes** (aguarda deploy + validação no bot).
+
+### Contexto
+
+O bot (Hermes) não conseguia responder "5 maiores ofensores de recorrência" nem
+"recorrência por natureza": as tools MCP não tinham ranking e o agente não tem
+como listar técnicos sozinho. Os dados já estavam no Postgres.
+
+### Feito
+
+- `GET /recorrencia/ranking?unidade&periodo_de&periodo_ate&top=5` — agrega
+  `é_recorrencia=SIM` por técnico numa única query: `recorrencias` (a métrica),
+  `os_no_analitico` (só contexto, para não repetir o erro de rótulo), `taxa`,
+  `total_recorrencias` da unidade e top (1–20). Exclui técnicos sem join.
+- `GET /recorrencia/por-problema?unidade&periodo_de&periodo_ate` — contagem de
+  recorrências por `problema_fechamento` + `resumo_categorias` em 3 grupos macro
+  (`categorizar_problema`: administrativo = CLIENTE DESISTIU/EM MASSIVA,
+  rede_externa = ORIGEM REDES/INFRA, default = culpa_do_campo — ajustável).
+- Tools MCP novas (`app/services/mcp_server.py`): `get_ranking_recorrencia` e
+  `get_recorrencia_por_problema` (o bot do Telegram vê estas). Espelhadas no
+  plugin `.opencode/plugins/operacoes.ts`.
+- Testes: `tests/test_recorrencia_endpoints.py` (categorização + agregações com
+  fake DB) e MCP atualizado (7 tools + URLs). **152 passed**.
+
+### Pendências
+
+- Deploy AWS + curl de validação (esperado: ranking CG/ago com MATHEUS 23
+  primeiro e ALVARO 4; por-problema com CONECTOR 48 encabeçando).
+- Validação do usuário no bot ("quais os 5 técnicos com mais recorrências em CG
+  na semana?"; "recorrências por natureza em CG").
+
 ## Rota Painel Operações — recorrência sem planilha (2026-08-28)
 
 Status: **implementado, testado ao vivo e importado na AWS** (aguarda validação

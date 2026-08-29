@@ -81,7 +81,7 @@ class FakeClient:
 
 
 class TestFerramentasRegistradas:
-    def test_cinco_ferramentas(self):
+    def test_sete_ferramentas(self):
         tools = asyncio.run(mcp_server.mcp.list_tools())
         nomes = {t.name for t in tools}
         assert nomes == {
@@ -90,6 +90,8 @@ class TestFerramentasRegistradas:
             "get_tempo_real",
             "get_planilha",
             "get_relatorio_semanal",
+            "get_ranking_recorrencia",
+            "get_recorrencia_por_problema",
         }
 
     def test_call_tool_via_fastmcp(self, monkeypatch):
@@ -152,6 +154,27 @@ class TestMapeamentoUrls:
     def test_tempo_real(self):
         mcp_server.get_tempo_real("LAGOA SECA")
         assert self.capturado["path"] == "/diagnostico/tempo-real/LAGOA%20SECA"
+
+    def test_ranking_recorrencia(self):
+        mcp_server.get_ranking_recorrencia("CAMPINA GRANDE", "2026-08-10", "2026-08-16")
+        assert self.capturado["path"] == (
+            "/recorrencia/ranking?unidade=CAMPINA%20GRANDE"
+            "&periodo_de=2026-08-10&periodo_ate=2026-08-16&top=5"
+        )
+
+    def test_ranking_recorrencia_top_personalizado(self):
+        mcp_server.get_ranking_recorrencia("LAGOA SECA", "2026-08-10", "2026-08-16", top=10)
+        assert self.capturado["path"] == (
+            "/recorrencia/ranking?unidade=LAGOA%20SECA"
+            "&periodo_de=2026-08-10&periodo_ate=2026-08-16&top=10"
+        )
+
+    def test_recorrencia_por_problema(self):
+        mcp_server.get_recorrencia_por_problema("CAMPINA GRANDE", "2026-08-10", "2026-08-16")
+        assert self.capturado["path"] == (
+            "/recorrencia/por-problema?unidade=CAMPINA%20GRANDE"
+            "&periodo_de=2026-08-10&periodo_ate=2026-08-16"
+        )
 
     def test_planilha_sem_aba(self):
         mcp_server.get_planilha()

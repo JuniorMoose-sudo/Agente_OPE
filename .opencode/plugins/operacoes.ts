@@ -135,6 +135,61 @@ export const OperacoesPlugin = async (input: { directory?: string }) => {
           )
         },
       }),
+      getRankingRecorrencia: tool({
+        description:
+          "Ranking pronto de técnicos com mais recorrências (é_recorrencia=SIM) de uma unidade no período — não precisa saber a lista de técnicos antes. O campo `recorrencias` é o número de recorrências; `os_no_analitico` são todas as OS do técnico no analítico (só contexto).",
+        args: {
+          unidade: z
+            .string()
+            .describe("Unidade: CAMPINA GRANDE ou LAGOA SECA"),
+          periodo_de: periodoDe.optional(),
+          periodo_ate: periodoAte.optional(),
+          top: z.number().describe("Quantos técnicos no ranking (padrão 5, máx 20)").optional(),
+        },
+        async execute(args: {
+          unidade: string
+          periodo_de?: string
+          periodo_ate?: string
+          top?: number
+        }) {
+          const { de, ate } = semanaAtual()
+          const params = new URLSearchParams({
+            unidade: args.unidade,
+            periodo_de: args.periodo_de ?? de,
+            periodo_ate: args.periodo_ate ?? ate,
+          })
+          if (args.top) params.set("top", String(args.top))
+          return chamarApi(
+            `/recorrencia/ranking?${params.toString()}`,
+          )
+        },
+      }),
+      getRecorrenciaPorProblema: tool({
+        description:
+          "Recorrências (é_recorrencia=SIM) de uma unidade quebradas por causa (Problema do fechamento), com resumo em 3 categorias macro.",
+        args: {
+          unidade: z
+            .string()
+            .describe("Unidade: CAMPINA GRANDE ou LAGOA SECA"),
+          periodo_de: periodoDe.optional(),
+          periodo_ate: periodoAte.optional(),
+        },
+        async execute(args: {
+          unidade: string
+          periodo_de?: string
+          periodo_ate?: string
+        }) {
+          const { de, ate } = semanaAtual()
+          const params = new URLSearchParams({
+            unidade: args.unidade,
+            periodo_de: args.periodo_de ?? de,
+            periodo_ate: args.periodo_ate ?? ate,
+          })
+          return chamarApi(
+            `/recorrencia/por-problema?${params.toString()}`,
+          )
+        },
+      }),
       getPlanilha: tool({
         description:
           "Lê dados da planilha Google Sheets. Primeiro chame sem aba para ver a lista de abas disponíveis. Depois chame com o nome da aba para ler os dados. Limite padrão: 200 linhas.",
