@@ -834,3 +834,61 @@ usuário). Commit: em andamento.
 - Retro: primeiro uso real do bot mostrou que a resposta de CG (68 KB numa
   linha única, `dias[]` de 43 equipes) estourava o leitor do Hermes — corrigido
   com `resumo=true` por padrão na tool; refazer a pergunta após o deploy.
+
+## Encerradas por natureza e por dia no período (coluna `fechamento`) — 2026-08-29
+
+Status: **implementado, testado (201 passed) e deployado na AWS**.
+
+### Contexto / decisões do usuário
+
+- Ao pedir o "encerrado de solicitações da semana" das duas unidades, o bot
+  respondeu com o panorama por **tipo** (produtivas/improdutivas) e foi
+  transparente sobre a limitação: `get_status_unidade` **não quebra encerradas
+  por natureza**. Usuário pediu para tratar a limitação e gerar o relatório mais
+  completo.
+- Métrica nova: "encerradas no período" = fechadas na janela pela **data de
+  ENCERRAMENTO** (`dataHora_Encerramento_OS`, novo campo `fechamento`), não pela
+  data de abertura como o status-unidade. O corte por dia/ano usa
+  `America/Sao_Paulo`. **Recolhimento aparece como natureza própria** (transparente
+  no detalhamento — sem exclusão silenciosa; o agente decide como narrar).
+
+### Feito
+
+- `app/models/solicitacao_servico.py`: coluna **`fechamento`** (timestamptz,
+  indexada). `app/jobs/sync_proxxima.py::_map_payload` agora mapeia
+  `dataHora_Encerramento_OS → fechamento` (upsert já atualiza nas próximas
+  execuções).
+- Endpoint **`GET /diagnostico/encerradas/{unidade}?periodo_de=&periodo_ate=`**
+  (`_encerradas_por_periodo` em `app/routers/diagnostico.py`): total encerradas
+  (Fechada Produtiva + Fechada Improdutiva), canceladas à parte, taxa de
+  produtividade (prod/(prod+impr)), **`por_natureza`** (total/prod/impr/canc,
+  ordenado por total desc) e **`por_dia`**. Filtra por `fechamento`; fallback
+  para `abertura` quando sem encerramento. Schemas em `app/schemas/diagnostico.py`
+  (`EncerradasResumo`, `EncerradaNatureza`, `EncerradasPorDia`).
+- Tool MCP **`get_encerradas_periodo`** (total: **10 tools**), period default =
+  semana atual. `tests/test_encerradas.py` (5) + MCP atualizado. **201 passed**.
+- Migração AWS: `ALTER TABLE ... ADD COLUMN fechamento` + índice + backfill via
+  `to_timestamp(payload->>'dataHora_Encerramento_OS')` (formato min e min:seg).
+  Resultado: 20.194 fechadas, **todas com `fechamento`** preenchido; 0 órfãs.
+
+### Validação ao vivo (29/08 ~13:50 UTC-3), semana 24–30/08
+
+- **CG**: 568 encerradas (493 prod / 75 impr, taxa 86,8%) — INSTALAÇÃO 269,
+  SEM ACESSO 150, MUDANÇA END 49, CORRETIVO 44, CORRETIVA/AP 33, RECOLHIMENTO 13…
+- **LS**: 133 encerradas (121 prod / 12 impr, taxa 91,0%) — SEM ACESSO 41,
+  INSTALAÇÃO 37, RECOLHIMENTO 22…
+- Os números **diferem do panorama anterior do bot** (CG 385 / LS 113), que
+  contava fechadas pela **abertura** no período. Aqui o corte é pela **data de
+  encerramento** — validar com o painel de fechadas da semana qual referência o
+  usuário considera "encerradas".
+
+### Pendências
+
+- Validar com o painel de fechadas da semana se o corte por `fechamento`
+  (CG 568 / LS 133) é o esperado, vs. o corte por abertura (385/113) do
+  status-unidade — se divergir, documentar qual usar por contexto no relatório.
+- **SEGURANÇA**: durante a validação, o token `OPS_API_TOKEN` apareceu impresso
+  na saída de um comando (`subprocess.CalledProcessError` exibiu o header curl).
+  Sinalizado ao usuário (regra de credencial) — **trocar o token**. No futuro,
+  curl via urllib sem exibir args, e scripts `.sh` com line endings LF (o CRLF
+  do Windows quebrou caminhos no servidor).
