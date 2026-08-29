@@ -628,3 +628,47 @@ Status: **implementado e validado ponta a ponta** (entrega no Telegram confirmad
 - Confirmação visual do usuário (mensagens ~12:07/12:09 no bot).
 - Observar o primeiro disparo automático da **varredura das 17:00** de 28/08 (valida a rotina noturna + `--continuity`).
 - Inspeção na varredura depende da credencial do Sheets na AWS (pendência conhecida).
+
+## Rota Painel Operações — recorrência sem planilha (2026-08-28)
+
+Status: **implementado, testado ao vivo e importado na AWS** (aguarda validação
+do usuário no Telegram/consultas).
+
+### Contexto
+
+- O painel `operacoes.proxxima.net` (server-rendered) tem a recorrência **por
+  protocolo** na página `/painel/recorrencia/analitico?mes=YYYY-MM&unidade=UNIDADE X`,
+  que **baixa o mesmo Excel "Analítico" do export manual** (aba `Analitico`, 1.028
+  linhas CG em ago/2026 vs 463 do export antigo).
+- **Auth = Zoho SSO** (sem usuário/senha de API; página `/login` confirma) →
+  acesso programático pelo **cookie `bl_session`** (mesmo padrão do painel-ope).
+
+### Feito
+
+- `OPERACOES_SESSION_COOKIE` no `app.config.Settings` (o valor real só no `.env`
+  da AWS; validade até 2026-09-01 17:05).
+- `app/services/operacoes_client.py`: `OperacoesClient.fetch_analitico(unidade, mes)`
+  → bytes do xlsx; detecta expiração (303/`/login`); valida magic `PK`;
+  URL form-urlencoded (`UNIDADE+CAMPINA+GRANDE`).
+- `app/jobs/sync_recorrencia_painel.py`: baixa CG+LS do mês corrente, grava em
+  temp, reusa **`importar_recorrencia`** (parser sem mudança — 13 colunas
+  esperadas presentes no painel), remove temp, **alerta Telegram** se o cookie
+  expirar (relança `OperacoesAuthError`, nunca contorna auth). Scheduler diário
+  **06:15 UTC-3** (guard: cookie presente; wiring no `main.py`).
+- Testes: `test_operacoes_client.py` (6) + `test_sync_recorrencia_painel.py` (3).
+  **131 passed** no total. Commit `c095bd0`.
+
+### Validação ao vivo (AWS, 28/08 ~18:58 UTC-3)
+
+```
+UNIDADE CAMPINA GRANDE: importadas 1029, sem_tecnico 13, com_recorrencia 195
+UNIDADE LAGOA SECA:      importadas 329, sem_tecnico 2, com_recorrencia 36
+```
+
+Banco confirmado: CG 1.029 / LS 329 em `ocorrencia_recorrencia`.
+
+### Pendências / observações
+
+- **Renovar cookie ~a cada 4 dias** (expira 2026-09-01 17:05) — alerta do job
+  avisa se expirar; renovar é recapturar o `bl_session` no navegador.
+- Planilha (Sheets) continua pendente **só para inspeção**.
