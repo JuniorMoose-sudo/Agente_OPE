@@ -127,3 +127,20 @@ class TestAgregarPontuacao:
         res = _agregar_pontuacao(FakeDB(linhas), "CAMPINA GRANDE", SEX)
         assert res.total_pontos_dia == 8.0
         assert res.total_pontos_semana == 16.0
+
+    def test_resumo_omite_a_quebra_diaria(self):
+        linhas = [
+            _linha("TEC A", SEG, 8.0),
+            _linha("TEC A", SEX, 4.0),
+            _linha("TEC B", SEG, 9.98),
+        ]
+        res = _agregar_pontuacao(FakeDB(linhas), "CAMPINA GRANDE", SEX, resumo=True)
+        por_tecnico = {e.tecnico: e for e in res.equipes}
+        assert por_tecnico["TEC A"].dias == []
+        assert por_tecnico["TEC A"].ponto_semana == 12.0  # soma continua
+        assert por_tecnico["TEC A"].pontos_dia == 4.0
+        assert por_tecnico["TEC B"].dias == []
+
+    def test_sem_resumo_traz_os_dias(self):
+        res = _agregar_pontuacao(FakeDB([_linha("TEC A", SEG, 8.0)]), "CAMPINA GRANDE", SEG, resumo=False)
+        assert [d.pontos for d in res.equipes[0].dias] == [8.0]

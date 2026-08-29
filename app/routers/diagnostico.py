@@ -381,8 +381,12 @@ def _semana_do_dia(data: date) -> tuple[date, date]:
     return segunda, segunda + timedelta(days=6)
 
 
-def _agregar_pontuacao(db: Session, unidade: str, dia: date) -> PontuacaoEquipeResumo:
-    """Pontuação das equipes no dia e na semana, com metas (8/dia útil, 40/semana)."""
+def _agregar_pontuacao(db: Session, unidade: str, dia: date, resumo: bool = False) -> PontuacaoEquipeResumo:
+    """Pontuação das equipes no dia e na semana, com metas (8/dia útil, 40/semana).
+
+    ``resumo=True`` omite a quebra diária ``dias[]`` — deixa o payload pequeno
+    para o agente ler direto (43 equipes × 7 dias de CG = ~68 KB por linha).
+    """
     unidade_normalizada = normalizar_unidade(unidade)
     semana_de, semana_ate = _semana_do_dia(dia)
     meta_dia = _meta_dia(dia)
@@ -408,15 +412,15 @@ def _agregar_pontuacao(db: Session, unidade: str, dia: date) -> PontuacaoEquipeR
                 "pontos_dia": 0.0,
             },
         )
-        pontos = float(linha.pontos or 0)
-        pontos = round(pontos, 2)
-        tech["dias"].append(
-            PontuacaoTecnicoDiaResumo(
-                data=linha.data,
-                pontos=pontos,
-                nao_pontua=linha.nao_pontua,
+        pontos = round(float(linha.pontos or 0), 2)
+        if not resumo:
+            tech["dias"].append(
+                PontuacaoTecnicoDiaResumo(
+                    data=linha.data,
+                    pontos=pontos,
+                    nao_pontua=linha.nao_pontua,
+                )
             )
-        )
         tech["ponto_semana"] = round(tech["ponto_semana"] + pontos, 2)
         if linha.data == dia:
             tech["pontos_dia"] = pontos
@@ -455,6 +459,7 @@ def _agregar_pontuacao(db: Session, unidade: str, dia: date) -> PontuacaoEquipeR
 async def pontuacao_equipes(
     unidade: str,
     data: date | None = Query(default=None, description="Data de referência (YYYY-MM-DD, padrão: hoje)"),
+    resumo: bool = Query(default=False, description="Omitir a quebra diária (dias[]) para diminuir o payload"),
     db: Session = Depends(get_db),
 ) -> PontuacaoEquipeResumo:
     """Pontuação das equipes/técnicos da unidade no dia e na semana.
@@ -465,4 +470,4 @@ async def pontuacao_equipes(
     semana completa (SEG a DOM).
     """
     dia = data or datetime.now(TimeZone("America/Sao_Paulo")).date()
-    return _agregar_pontuacao(db, unidade, dia)
+    return _agregar_pontuacao(db, unidade, dia, resumo=resumo)

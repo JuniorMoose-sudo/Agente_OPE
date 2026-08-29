@@ -815,8 +815,11 @@ usuário). Commit: em andamento.
 - Endpoint `GET /diagnostico/pontuacao/{unidade}?data=` (`_agregar_pontuacao`):
   por técnico, `pontos_dia` + `meta_dia` (None sáb/dom) + `cumpre_meta_dia`,
   `ponto_semana` + `cumpre_meta_semana`, quebra diária `dias[]`, ordenado por
-  semana desc. Totais do dia/semana da unidade.
-- Tool MCP **get_pontuacao_equipe** (total: 9 tools). Wiring no `main.py`.
+  semana desc. Totais do dia/semana da unidade. Parâmetro **`resumo=true`**
+  omite `dias[]` (o payload cheio de CG = 43 equipes × 7 dias ≈ 68 KB numa
+  linha, que o leitor do Hermes truncava — o resumo deixa ~6 KB legível).
+- Tool MCP **get_pontuacao_equipe** (total: 9 tools) com **`resumo=true` por
+  padrão** (`resumo=false` traz o detalhe por dia). Wiring no `main.py`.
 - Testes novos: `test_aniel_client.py` (7), `test_pontuacao_sync.py` (7),
   `test_pontuacao_endpoint.py` (10), MCP atualizado para 9 tools (3 novos).
   **191 passed** (antes 165). Validação ao vivo (GET público): soma de CG na
@@ -828,3 +831,6 @@ usuário). Commit: em andamento.
   (`agente-ope` + `hermes-gateway`) → curva ao vivo do sync e validação com o
   usuário (ex.: pontuação de MATHEUS FERNANDES DA SILVA vs painel TOTVS/n8n).
 - Bot: sessão ativa precisa de **/new** para ver a 9ª tool (padrão recorrente).
+- Retro: primeiro uso real do bot mostrou que a resposta de CG (68 KB numa
+  linha única, `dias[]` de 43 equipes) estourava o leitor do Hermes — corrigido
+  com `resumo=true` por padrão na tool; refazer a pergunta após o deploy.

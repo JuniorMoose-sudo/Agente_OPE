@@ -193,12 +193,20 @@ class TestMapeamentoUrls:
     def test_pontuacao_equipe_explicita(self):
         mcp_server.get_pontuacao_equipe("CAMPINA GRANDE", "2026-08-29")
         assert self.capturado["path"] == (
-            "/diagnostico/pontuacao/CAMPINA%20GRANDE?data=2026-08-29"
+            "/diagnostico/pontuacao/CAMPINA%20GRANDE?data=2026-08-29&resumo=true"
         )
 
     def test_pontuacao_equipe_padrao_sem_data(self):
         mcp_server.get_pontuacao_equipe("LAGOA SECA")
-        assert self.capturado["path"] == "/diagnostico/pontuacao/LAGOA%20SECA"
+        assert self.capturado["path"] == (
+            "/diagnostico/pontuacao/LAGOA%20SECA?resumo=true"
+        )
+
+    def test_pontuacao_equipe_com_detalhe(self):
+        mcp_server.get_pontuacao_equipe("CAMPINA GRANDE", "2026-08-29", resumo=False)
+        assert self.capturado["path"] == (
+            "/diagnostico/pontuacao/CAMPINA%20GRANDE?data=2026-08-29&resumo=false"
+        )
 
     def test_planilha_sem_aba(self):
         mcp_server.get_planilha()
