@@ -26,6 +26,7 @@ class SolicitacaoServico(Base):
     tecnico: Mapped[str | None] = mapped_column(Text, index=True)
     abertura: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     venc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    agendamento: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sla_status: Mapped[str | None] = mapped_column(Text)
     relatos: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[dict | None] = mapped_column(JSONB)

@@ -18,6 +18,29 @@ class PontuacaoTotvsResumo(BaseModel):
     detalhes: list[dict]
 
 
+class AgendadoNatureza(BaseModel):
+    """Total de atendimentos agendados de uma natureza em um dia."""
+
+    natureza: str | None
+    total: int
+    com_equipe: int
+
+
+class AgendadosResumo(BaseModel):
+    """Atendimentos agendados para uma data, por unidade e natureza.
+
+    Com base em ``data_Hora_Agendamento_OS`` do GetAll (Proxxima). "Com equipe"
+    significa que a OS já tem técnico responsável ou equipe atribuída.
+    """
+
+    unidade: str
+    data: date
+    total: int
+    com_equipe: int
+    sem_equipe: int
+    por_natureza: list[AgendadoNatureza]
+
+
 class DiagnosticoTecnico(BaseModel):
     """Diagnóstico completo de um técnico cruzando as 3 fontes."""
 

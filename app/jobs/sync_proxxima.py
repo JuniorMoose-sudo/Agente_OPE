@@ -76,6 +76,7 @@ def _map_payload(servico: dict[str, Any]) -> dict[str, Any] | None:
         "tecnico": servico.get("responsavel"),
         "abertura": _parse_data_br(servico.get("dataHora_Abertura_OS")),
         "venc": _parse_data_br(servico.get("dataHora_Vencimento_OS")),
+        "agendamento": _parse_data_br(servico.get("data_Hora_Agendamento_OS")),
         "sla_status": servico.get("sla"),
         "relatos": servico.get("observacao"),
         "payload": servico,

@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import Date, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -17,6 +17,8 @@ from app.security import exigir_token_ops
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
 from app.models.solicitacao_servico import SolicitacaoServico
 from app.schemas.diagnostico import (
+    AgendadoNatureza,
+    AgendadosResumo,
     ComparativoUnidades,
     DiagnosticoTecnico,
     InspecaoResumo,
@@ -287,3 +289,73 @@ async def tempo_real(unidade: str):
     Use quando precisar do estado atualizado das OS (panorama do dia, etc.).
     """
     return _buscar_dados_tempo_real(unidade)
+
+
+def _tem_equipe(servico: SolicitacaoServico) -> bool:
+    """OS já tem equipe = técnico responsável OU matrícula de equipe atribuída."""
+    if servico.tecnico and str(servico.tecnico).strip():
+        return True
+    payload = servico.payload or {}
+    return bool(str(payload.get("equipe_Matricula") or "").strip())
+
+
+def _agendados_por_dia(db: Session, unidade: str, dia: date) -> AgendadosResumo:
+    """Agrega os atendimentos agendados (data_Hora_Agendamento_OS) de um dia."""
+    unidade_normalizada = normalizar_unidade(unidade)
+
+    linhas = db.scalars(
+        select(SolicitacaoServico)
+        .where(
+            (SolicitacaoServico.unidade.ilike(f"%{unidade_normalizada}%"))
+            & (func.timezone("America/Sao_Paulo", SolicitacaoServico.agendamento).cast(Date) == dia)
+            & (SolicitacaoServico.status.notilike("Fechada%"))
+            & (SolicitacaoServico.status.is_not(None))
+            & (SolicitacaoServico.status != "Cancelado")
+        )
+    ).all()
+
+    por_natureza: dict[str, dict[str, int]] = {}
+    com_equipe = 0
+    for servico in linhas:
+        natureza = servico.natureza or "SEM NATUREZA"
+        item = por_natureza.setdefault(natureza, {"total": 0, "com_equipe": 0})
+        item["total"] += 1
+        if _tem_equipe(servico):
+            com_equipe += 1
+            item["com_equipe"] += 1
+
+    lista = sorted(
+        (
+            AgendadoNatureza(
+                natureza=natureza,
+                total=item["total"],
+                com_equipe=item["com_equipe"],
+            )
+            for natureza, item in por_natureza.items()
+        ),
+        key=lambda ag: (-ag.total, str(ag.natureza)),
+    )
+
+    return AgendadosResumo(
+        unidade=unidade_normalizada,
+        data=dia,
+        total=len(linhas),
+        com_equipe=com_equipe,
+        sem_equipe=len(linhas) - com_equipe,
+        por_natureza=list(lista),
+    )
+
+
+@router.get("/agendados/{unidade}", response_model=AgendadosResumo)
+async def atendimentos_agendados(
+    unidade: str,
+    data: date = Query(..., description="Data dos agendamentos (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+) -> AgendadosResumo:
+    """Atendimentos agendados para uma data, por unidade e natureza.
+
+    Fonte: ``data_Hora_Agendamento_OS`` do GetAll (Proxxima), já gravado na
+    coluna ``agendamento`` de ``solicitacao_servico``. Inclui apenas OS ainda
+    abertas (não fechadas/canceladas).
+    """
+    return _agendados_por_dia(db, unidade, data)

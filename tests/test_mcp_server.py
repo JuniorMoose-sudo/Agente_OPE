@@ -81,7 +81,7 @@ class FakeClient:
 
 
 class TestFerramentasRegistradas:
-    def test_sete_ferramentas(self):
+    def test_oito_ferramentas(self):
         tools = asyncio.run(mcp_server.mcp.list_tools())
         nomes = {t.name for t in tools}
         assert nomes == {
@@ -92,6 +92,7 @@ class TestFerramentasRegistradas:
             "get_relatorio_semanal",
             "get_ranking_recorrencia",
             "get_recorrencia_por_problema",
+            "get_atendimentos_agendados",
         }
 
     def test_call_tool_via_fastmcp(self, monkeypatch):
@@ -174,6 +175,18 @@ class TestMapeamentoUrls:
         assert self.capturado["path"] == (
             "/recorrencia/por-problema?unidade=CAMPINA%20GRANDE"
             "&periodo_de=2026-08-10&periodo_ate=2026-08-16"
+        )
+
+    def test_atendimentos_agendados_explicita(self):
+        mcp_server.get_atendimentos_agendados("CAMPINA GRANDE", "2026-08-29")
+        assert self.capturado["path"] == (
+            "/diagnostico/agendados/CAMPINA%20GRANDE?data=2026-08-29"
+        )
+
+    def test_atendimentos_agendados_padrao_amanha(self, sexta_28_ago):
+        mcp_server.get_atendimentos_agendados("LAGOA SECA")
+        assert self.capturado["path"] == (
+            "/diagnostico/agendados/LAGOA%20SECA?data=2026-08-29"
         )
 
     def test_planilha_sem_aba(self):

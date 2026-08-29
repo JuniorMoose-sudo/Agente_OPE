@@ -185,6 +185,30 @@ def get_tempo_real(unidade: str) -> str:
 
 
 @mcp.tool()
+def get_atendimentos_agendados(
+    unidade: str,
+    data: Optional[str] = None,
+) -> str:
+    """Atendimentos AGENDADOS para uma data (hoje/amanhã/próximos) que já estão
+    com equipe, por unidade e por natureza. Fonte: data_Hora_Agendamento_OS do
+    Proxxima (coluna agendamento do banco). Use para perguntas do tipo 'quantos
+    atendimentos temos agendado para amanhã em CG/LS' ou 'o que está agendado
+    hoje por natureza'. Retorna total, com/sem equipe e a quebra por natureza.
+    Não confundir com 'Aguardando Agendamento' (fila SEM data), que é a fila
+    ainda não agendada.
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        data: Data dos agendamentos (YYYY-MM-DD). Se omitido, usa AMANHÃ
+            (dia seguinte ao atual).
+    """
+    amanha = datetime.now() + timedelta(days=1)
+    dia = data or amanha.strftime("%Y-%m-%d")
+    params = f"data={quote(dia, safe='')}"
+    return _chamar_api("GET", f"/diagnostico/agendados/{quote(unidade, safe='')}?{params}")
+
+
+@mcp.tool()
 def get_planilha(aba: Optional[str] = None, limite: Optional[int] = None) -> str:
     """Lê dados da planilha Google Sheets. Primeiro chame sem aba para ver a
     lista de abas disponíveis. Depois chame com o nome da aba para ler os
