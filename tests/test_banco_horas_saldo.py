@@ -176,6 +176,11 @@ class TestCruzamentoSaldo:
         assert resumo["total_saldo"] == 12.10  # 9.10 (TEC A) + 3.00 (TEC B)
         assert len(resumo["tecnicos"]) == 2
 
+    def test_saldo_sem_periodo_usa_banco_inteiro(self, session_bh):
+        resumo = buscar_saldo_banco_unidade(session_bh, "CAMPINA GRANDE", None, None)
+        assert resumo["total_saldo"] == 12.10
+        assert {t["tecnico"] for t in resumo["tecnicos"]} == {"TEC A", "TEC B"}
+
     def test_banco_horas_tecnico_sem_infracoes(self, session_bh, monkeypatch):
         monkeypatch.setattr("app.services.cruzamento._snapshots_no_periodo", lambda *a, **k: [])
         res = buscar_banco_horas_tecnico(session_bh, "TEC A", DE, ATE)

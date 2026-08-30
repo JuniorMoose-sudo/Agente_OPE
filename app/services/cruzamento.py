@@ -136,10 +136,11 @@ def buscar_ultimos_saldos(
     `unidade` for informada, filtra a unidade. Portável (subquery GROUP BY
     MAX), evita DISTINCT ON que só existe no Postgres.
     """
-    filtros = [
-        BancoHorasSaldo.data >= periodo_de,
-        BancoHorasSaldo.data <= periodo_ate,
-    ]
+    filtros = []
+    if periodo_de:
+        filtros.append(BancoHorasSaldo.data >= periodo_de)
+    if periodo_ate:
+        filtros.append(BancoHorasSaldo.data <= periodo_ate)
     if unidade:
         filtros.append(BancoHorasSaldo.unidade == unidade)
 
