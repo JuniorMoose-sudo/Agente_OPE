@@ -895,7 +895,7 @@ Status: **implementado, testado (201 passed) e deployado na AWS**.
 
 ## Sprint 8 - Banco de Horas via planilha publica (substitui painel-ope)
 
-Status: implementado + testes verdes (255 passed). Falta deploy AWS + validacao ao vivo.
+Status: implementado, testado (233 passed) e **deployado na AWS em 30/08** com validacao ao vivo contra a planilha (saldos batem).
 
 Decisoes do usuario (2026-08-30):
 - Metrica: **saldo** do banco de horas (coluna SALDO do CSV).
@@ -930,7 +930,25 @@ Decisoes do usuario (2026-08-30):
   Nenhuma linha sem DATA ou SALDO nas unidades-alvo.
 
 ### Pendentes
-- Deploy AWS: `Base.metadata.create_all` cria a tabela; rodar `sync_banco_horas_saldo`
-  uma vez para popular (o job diario agendado so roda apos 24h).
-- Validar saldos no diagnostico/relatorio contra a planilha (o usuario bate os numeros).
+- ~~Deploy AWS: `Base.metadata.create_all` cria a tabela; rodar `sync_banco_horas_saldo`~~
+  ~~uma vez para popular (o job diario agendado so roda apos 24h).~~
+- ~~Validar saldos no diagnostico/relatorio contra a planilha (o usuario bate os numeros).~~
 - 401 do painel-ope segue pendente (infracoes ainda dependem do cookie).
+
+### Deploy AWS (30/08) - F E I T O
+- Push `f8f694b` (#feat banco de horas planilha publica) + `ec97fd7` (fix saldo sem
+  periodo). Git pull no servidor, restart `agente-ope.service` (active, health ok) e
+  `hermes-gateway` (active).
+- `create_all` criou `banco_horas_saldo`; sync manual gravou **1.908** registros
+  (CG 1.464 + LS 444), sem linha descartada por dado faltante.
+- Fix de bug em producao: `buscar_ultimos_saldos` quebrava (`data >= None`) quando
+  o endpoint `/banco-horas/saldo/...` era chamado sem `de`/`ate` - agora usa o banco
+  inteiro (teste novo `test_saldo_sem_periodo_usa_banco_inteiro`).
+- Validacao contra a planilha (extrai o CSV ao vivo): ALVARO CORREIA 29/08 = **-1,13
+  NEGATIVO** (bate com o endpoint), BRENDO JUSTINO 29/08 = **-0,43 NEGATIVO**,
+  ALEF JOHAN = 0 (ultimo 18/07, sem linhas apos). CG total 128,5h / LS 22,69h.
+- `checar_expiracao_cookie` agora sonda a sessao no servidor (`/semanatec`) alem do
+  `exp` do JWT - detecta sessao invalidada (caso real: exp +10d com /analises 401)
+  e alerta no Telegram no mesmo dia. Teste novo `tests/test_checar_cookie.py` (6).
+- Total da suite: **233 passed** (antes do deploy). TOTVS: confirmado desativado por
+  commit d6d586c (fonte abandonada) - cookie ausente e esperado, sem acao.
