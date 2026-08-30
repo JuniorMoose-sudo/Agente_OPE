@@ -9,6 +9,7 @@ import pytest
 
 from app.services.painel_ope_client import (
     AuthenticationError,
+    HTTP_TIMEOUT,
     PainelOpeClient,
     _decodificar_payload_jwt,
 )
@@ -53,6 +54,13 @@ class TestDiasParaExpirar:
         exp = int(agora.timestamp()) + 6 * 86400
         client = PainelOpeClient(cookie_session=_montar_cookie({"exp": exp}))
         assert client.dias_para_expirar() == 6
+
+    def test_timeout_longo_para_cold_start(self):
+        # /analises passava de 15s (ReadTimeout real) — o client deve aguentar cold start.
+        client = PainelOpeClient(cookie_session=_montar_cookie({"exp": 1_700_000_000}))
+        assert client.client.timeout.read == HTTP_TIMEOUT
+        assert client.client.timeout.connect == HTTP_TIMEOUT
+        assert HTTP_TIMEOUT >= 60
 
     def test_cookie_expirado(self):
         client = PainelOpeClient(cookie_session=_montar_cookie({"exp": int(time.time()) - 86400}))

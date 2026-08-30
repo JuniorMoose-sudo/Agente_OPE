@@ -36,6 +36,11 @@ BASE_URL = "https://painel-ope.vercel.app/api"
 
 COOKIE_NAME = "ope_session"
 
+# /analises é pesado e roda em cold start no Vercel — 15s não bastava (ReadTimeout
+# real em 2026-08-30 com cookie válido). Só é usado em jobs de sync, não no
+# caminho de request, então um timeout maior é seguro.
+HTTP_TIMEOUT = 60
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -105,7 +110,7 @@ class PainelOpeClient:
             "Content-Type": "application/json",
             "Cookie": f"{COOKIE_NAME}={cookie}",
         }
-        self.client = httpx.Client(timeout=15, headers=self.headers)
+        self.client = httpx.Client(timeout=HTTP_TIMEOUT, headers=self.headers)
 
     def dias_para_expirar(self) -> int:
         """Dias até o ``exp`` do JWT (negativo se já expirou), arredondado p/ cima."""
