@@ -965,3 +965,16 @@ Decisoes do usuario (2026-08-30):
 - Sync validado ao vivo: semana 24-30/08 -> **16 infracoes**, snapshot 174,32h HE,
   roster 104 tecnicos. Endpoint `/banco-horas/analises` e `/status-cookie` OK.
 - Suite apos fixes: **241 passed**.
+
+### Resposta do bot (hermes-gateway) voltando a funcionar (30/08)
+- O erro "Provider authentication failed" do bot NAO era o deploy nem o cookie: era o
+  provider LLM do hermes. O gateway usa o provider **keyless** `opencode-free`
+  (`https://opencode.ai/zen/v1`, sem chave); o modelo configurado `hy3-free` foi
+  **removido do relay** -> `Model hy3-free is not supported` para toda mensagem.
+- Sonda ao vivo de GET/POST /zen/v1/models (anonimo): `hy3-free` delisted;
+  `x-preview-f-free`/`mimo-v2.5-free` UA-gated; a maioria dos free models com
+  upstream indisponivel no momento; **`nemotron-3.5-lightning-free` respondeu OK**.
+- `~/.hermes/config.yaml`: `model.default: hy3-free` -> `nemotron-3.5-lightning-free`
+  (+ `base_url` alinhado ao zen/v1 do provider). Backup criado. Restart do
+  hermes-gateway: ativo, sem erro de provider, NRestarts=0.
+- Pendencia: usuario confirmar no Telegram que o bot responde normalmente.
