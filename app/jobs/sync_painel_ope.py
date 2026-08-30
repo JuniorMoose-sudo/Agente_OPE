@@ -12,7 +12,7 @@ usuário; não há setor separado para Lagoa Seca no painel):
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -41,7 +41,7 @@ def _parse_data_key(value: Any) -> date | None:
     if not value:
         return None
     try:
-        return date.strptime(str(value).strip(), DATA_KEY_FORMAT)
+        return datetime.strptime(str(value).strip(), DATA_KEY_FORMAT).date()
     except ValueError:
         logger.warning("dataKey no formato inesperado: %r (registro gravado sem data)", value)
         return None
