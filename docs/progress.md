@@ -978,3 +978,4 @@ Decisoes do usuario (2026-08-30):
   (+ `base_url` alinhado ao zen/v1 do provider). Backup criado. Restart do
   hermes-gateway: ativo, sem erro de provider, NRestarts=0.
 - Pendencia: usuario confirmar no Telegram que o bot responde normalmente.
+  -> **Confirmado em 30/08: bot respondendo normalmente.**
