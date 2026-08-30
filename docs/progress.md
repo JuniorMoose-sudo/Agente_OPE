@@ -933,7 +933,7 @@ Decisoes do usuario (2026-08-30):
 - ~~Deploy AWS: `Base.metadata.create_all` cria a tabela; rodar `sync_banco_horas_saldo`~~
   ~~uma vez para popular (o job diario agendado so roda apos 24h).~~
 - ~~Validar saldos no diagnostico/relatorio contra a planilha (o usuario bate os numeros).~~
-- 401 do painel-ope segue pendente (infracoes ainda dependem do cookie).
+- 401 do painel-ope: **resolvido** (cookie renovado pelo usuario em 30/08) - infracoes sincronizando.
 
 ### Deploy AWS (30/08) - F E I T O
 - Push `f8f694b` (#feat banco de horas planilha publica) + `ec97fd7` (fix saldo sem
@@ -952,3 +952,16 @@ Decisoes do usuario (2026-08-30):
   e alerta no Telegram no mesmo dia. Teste novo `tests/test_checar_cookie.py` (6).
 - Total da suite: **233 passed** (antes do deploy). TOTVS: confirmado desativado por
   commit d6d586c (fonte abandonada) - cookie ausente e esperado, sem acao.
+
+### Cookie do painel-ope renovado (30/08)
+- Usuario renovou via login Zoho; novo `OPE_SESSION_COOKIE` aplicado no `.env` da AWS
+  (LF mantido, chmod 600, valor nunca logado). `exp` 10 dias (09/09/2026).
+- `painel-ope_client`: timeout do client **15s -> 60s** (`HTTP_TIMEOUT`) - /analises
+  passava de 15s em cold start do Vercel (ReadTimeout real com cookie valido).
+  Teste novo `test_timeout_longo_para_cold_start`.
+- Fix de bug real na sync de infracoes: `_parse_data_key` usava `date.strptime`
+  (nao existe; quebrava toda a sync apos o login). Corrigido para
+  `datetime.strptime(...).date()` + `tests/test_sync_painel_ope.py` (6).
+- Sync validado ao vivo: semana 24-30/08 -> **16 infracoes**, snapshot 174,32h HE,
+  roster 104 tecnicos. Endpoint `/banco-horas/analises` e `/status-cookie` OK.
+- Suite apos fixes: **241 passed**.
