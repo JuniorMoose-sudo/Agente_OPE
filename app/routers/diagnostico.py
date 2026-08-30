@@ -79,7 +79,7 @@ async def diagnostico_tecnico(
             f"Recorrência NÃO é concentrada em um único técnico da unidade."
         ),
         produtividade=buscar_produtividade(db, nome_tecnico, periodo_de, periodo_ate),
-        he_horas=banco_horas["he_horas"],
+        saldo_banco_horas=banco_horas["saldo"],
         infracoes=banco_horas["infracoes"],
         ultima_inspecao=(
             InspecaoResumo(
@@ -171,7 +171,7 @@ def _status_unidade(db: Session, unidade: str, periodo_de: date, periodo_ate: da
         fechadas_produtivas=fech_prod,
         fechadas_improdutivas=fech_improd,
         canceladas=canceladas,
-        he_horas=banco_horas["he_horas"],
+        saldo_banco_horas=banco_horas["saldo"],
         infr_dias=infr_dias,
         recorrencias=recorrencias,
     )

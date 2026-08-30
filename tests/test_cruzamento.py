@@ -6,7 +6,7 @@ e helpers de delta do relatório.
 
 from app.jobs.sync_proxxima import _is_aberta
 from app.services.cruzamento import (
-    LIMITE_HE_SEMANAL,
+    LIMITE_BANCO_HORAS,
     LIMITE_REABERTURA,
     META_INSPECAO,
     _calcular_alerta,

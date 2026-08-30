@@ -1,4 +1,4 @@
-﻿# Progresso â€” Agente de apoio Ã  decisÃ£o operacional
+# Progresso â€” Agente de apoio Ã  decisÃ£o operacional
 
 Ãšltima atualizaÃ§Ã£o: 2026-08-28
 
@@ -892,3 +892,45 @@ Status: **implementado, testado (201 passed) e deployado na AWS**.
   Sinalizado ao usuário (regra de credencial) — **trocar o token**. No futuro,
   curl via urllib sem exibir args, e scripts `.sh` com line endings LF (o CRLF
   do Windows quebrou caminhos no servidor).
+
+## Sprint 8 - Banco de Horas via planilha publica (substitui painel-ope)
+
+Status: implementado + testes verdes (255 passed). Falta deploy AWS + validacao ao vivo.
+
+Decisoes do usuario (2026-08-30):
+- Metrica: **saldo** do banco de horas (coluna SALDO do CSV).
+- Dados: usar todos ate 30/07 (HISTORICO); na pratica a aba ja tem linhas ate 29/08.
+- Integracao: **substituir painel-ope para banco/HE** - doravante banco de horas/HE
+  vem da planilha publica (sem cookie); painel-ope fica so para infracoes.
+
+### Feito
+
+- `app/models/banco_horas_saldo.py`: nova tabela (tecnico, unidade, data, saldo,
+  cargo, tipo, coordenador, supervisor, variacao, status; unique tecnico+unidade+data).
+- `app/services/banco_horas_sheets_client.py`: client publico (CSV pub, sem cookie),
+  validacao de colunas obrigatorias, parse SALDO brasileiro ("7,55"/"1.234,56") e
+  DATA dd/mm/yyyy, decodificacao tolerante (utf-8-sig/utf-8/cp1252).
+- `app/jobs/sync_banco_horas_saldo.py`: job diario (upsert por tecnico+unidade+data),
+  filtra so CG/LS (aba HISTORICO_REG03 contem outras unidades). Agendado no main.py.
+- `app/services/cruzamento.py`: `buscar_ultimos_saldos` (subquery MAX por tecnico,
+  portavel), `buscar_saldo_banco_unidade`, `buscar_banco_horas_tecnico` agora retorna
+  `saldo` (substitui `he_horas`) + mantem `infracoes` do painel-ope. `_calcular_alerta`
+  usa `LIMITE_BANCO_HORAS=8.0` (era LIMITE_HE_SEMANAL).
+- Endpoints: `GET /banco-horas/saldo/{unidade}` e `/banco-horas/saldo/tecnico/{nome}`.
+- Tool MCP **`get_banco_horas_saldo`** (total: **11 tools**).
+- Schema `DiagnosticoTecnico`/`StatusUnidade`: `he_horas` renomeado para
+  `saldo_banco_horas`. Relatorio .docx: secoes HE -> saldo (top saldo, risco
+  combinado saldo+recorrencia, indicador "Saldo Banco de Horas").
+- `tests/test_banco_horas_saldo.py` (25): parse client, _montar_registros, helpers
+  de cruzamento com sqlite real. Alertas/relatorio/MCP atualizados.
+
+### Validacao ao vivo (30/08) do CSV publico
+- 3.843 linhas totais; 1.908 alvo (CG 1.464 + LS 444); 1.935 outras unidades
+  (FILADELFIA, JACOBINA etc. - descartadas). Datas 18/05/2026 a 29/08/2026.
+  Nenhuma linha sem DATA ou SALDO nas unidades-alvo.
+
+### Pendentes
+- Deploy AWS: `Base.metadata.create_all` cria a tabela; rodar `sync_banco_horas_saldo`
+  uma vez para popular (o job diario agendado so roda apos 24h).
+- Validar saldos no diagnostico/relatorio contra a planilha (o usuario bate os numeros).
+- 401 do painel-ope segue pendente (infracoes ainda dependem do cookie).

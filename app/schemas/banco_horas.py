@@ -24,3 +24,23 @@ class RosterResumo(BaseModel):
 class StatusCookie(BaseModel):
     configurado: bool
     expira_em_dias: int | None = None
+
+
+class SaldoTecnicoItem(BaseModel):
+    """Último saldo de banco de horas de um técnico no período consultado."""
+
+    tecnico: str
+    unidade: str
+    data: date | None = None
+    saldo: float | None = None
+    status: str | None = None
+
+
+class BancoHorasSaldoResumo(BaseModel):
+    """Situação de banco de horas de uma unidade (fonte: planilha pública)."""
+
+    unidade: str
+    periodo_de: date | None = None
+    periodo_ate: date | None = None
+    total_saldo: float | None = None
+    tecnicos: list[SaldoTecnicoItem]

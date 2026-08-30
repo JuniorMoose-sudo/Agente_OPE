@@ -1,3 +1,4 @@
+from app.models.banco_horas_saldo import BancoHorasSaldo
 from app.models.banco_horas_semanal import BancoHorasSemanal
 from app.models.infracao import Infracao
 from app.models.inspecao import Inspecao
@@ -9,6 +10,7 @@ from app.models.roster_tecnico import RosterTecnico
 from app.models.solicitacao_servico import SolicitacaoServico
 
 __all__ = [
+    "BancoHorasSaldo",
     "BancoHorasSemanal",
     "Infracao",
     "Inspecao",

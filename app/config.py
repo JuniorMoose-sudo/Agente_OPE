@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     sheets_spreadsheet_url: str | None = None
     sheets_aba_inspecao: str = "Inspecao"
 
+    # Banco de Horas — Google Sheets PUBLICADA (web, sem cookie). Substitui o
+    # painel-ope como fonte de banco de horas/HE. URL pública CSV da aba
+    # HISTORICO_REG03 (contém CAMPINA GRANDE e LAGOA SECA).
+    banco_horas_saldo_url: str = (
+        "https://docs.google.com/spreadsheets/d/e/"
+        "2PACX-1vSk5U4vu-eS4QBbIH0pIAKAWCSGx10mnjhCo0EqgvZSqRU5UFfqclBiXCFmdar_d_G_NzCJQY-Wp663/"
+        "pub?gid=2049164456&single=true&output=csv"
+    )
+    banco_horas_unidades: tuple[str, ...] = ("CAMPINA GRANDE", "LAGOA SECA")
+
     # TOTVS Analytics (GoodData) — cookie de sessão do navegador
     totvs_sst_cookie: str | None = None
 

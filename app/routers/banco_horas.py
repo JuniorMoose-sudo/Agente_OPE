@@ -12,9 +12,17 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.models.banco_horas_saldo import BancoHorasSaldo
 from app.models.banco_horas_semanal import BancoHorasSemanal
 from app.models.roster_tecnico import RosterTecnico
-from app.schemas.banco_horas import AnalisesResumo, RosterResumo, StatusCookie
+from app.schemas.banco_horas import (
+    AnalisesResumo,
+    BancoHorasSaldoResumo,
+    RosterResumo,
+    SaldoTecnicoItem,
+    StatusCookie,
+)
+from app.services.cruzamento import buscar_saldo_banco_unidade, normalizar_unidade
 from app.services.painel_ope_client import PainelOpeClient
 
 router = APIRouter(prefix="/banco-horas", tags=["banco-horas"])
@@ -89,3 +97,57 @@ def status_cookie() -> StatusCookie:
     except Exception:
         dias = None
     return StatusCookie(configurado=True, expira_em_dias=dias)
+
+
+@router.get("/saldo/{unidade}", response_model=BancoHorasSaldoResumo)
+def saldo_unidade(
+    unidade: str,
+    de: date | None = Query(None, description="Início do período (YYYY-MM-DD)"),
+    ate: date | None = Query(None, description="Fim do período (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+) -> BancoHorasSaldoResumo:
+    """Saldo de banco de horas de uma unidade (último saldo por técnico).
+
+    Fonte: planilha pública (`banco_horas_saldo`) — substitui o painel-ope.
+    Sem período usa o banco inteiro (último saldo conhecido de cada técnico).
+    """
+    unidade_norm = normalizar_unidade(unidade)
+    if not unidade_norm:
+        raise HTTPException(status_code=422, detail="Unidade inválida.")
+    resumo = buscar_saldo_banco_unidade(db, unidade_norm, de, ate)
+    return BancoHorasSaldoResumo(
+        unidade=unidade_norm,
+        periodo_de=de,
+        periodo_ate=ate,
+        total_saldo=resumo["total_saldo"],
+        tecnicos=resumo["tecnicos"],
+    )
+
+
+@router.get("/saldo/tecnico/{nome_tecnico}", response_model=SaldoTecnicoItem)
+def saldo_tecnico(
+    nome_tecnico: str,
+    de: date | None = Query(None, description="Início do período (YYYY-MM-DD)"),
+    ate: date | None = Query(None, description="Fim do período (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+) -> SaldoTecnicoItem:
+    """Último saldo de banco de horas de um técnico no período."""
+    reg = db.scalars(
+        select(BancoHorasSaldo)
+        .where(
+            BancoHorasSaldo.tecnico == nome_tecnico.upper(),
+            *([BancoHorasSaldo.data >= de] if de else []),
+            *([BancoHorasSaldo.data <= ate] if ate else []),
+        )
+        .order_by(BancoHorasSaldo.data.desc())
+        .limit(1)
+    ).first()
+    if not reg:
+        raise HTTPException(status_code=404, detail=f"Sem saldo de banco de horas para {nome_tecnico}.")
+    return SaldoTecnicoItem(
+        tecnico=reg.tecnico,
+        unidade=reg.unidade,
+        data=reg.data.date() if reg.data else None,
+        saldo=round(float(reg.saldo), 2) if reg.saldo is not None else None,
+        status=reg.status,
+    )

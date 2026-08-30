@@ -167,9 +167,9 @@ class TestConstantesAlerta:
         from app.services.cruzamento import LIMITE_REABERTURA
         assert LIMITE_REABERTURA == 1
 
-    def test_limite_he_e_8(self):
-        from app.services.cruzamento import LIMITE_HE_SEMANAL
-        assert LIMITE_HE_SEMANAL == 8.0
+    def test_limite_banco_horas_e_8(self):
+        from app.services.cruzamento import LIMITE_BANCO_HORAS
+        assert LIMITE_BANCO_HORAS == 8.0
 
     def test_meta_inspecao_e_7(self):
         from app.services.cruzamento import META_INSPECAO

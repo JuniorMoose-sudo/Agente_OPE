@@ -134,7 +134,7 @@ class DiagnosticoTecnico(BaseModel):
     recorrencia_os_no_analitico: int
     recorrencia_contexto: str
     produtividade: dict
-    he_horas: float | None = None
+    saldo_banco_horas: float | None = None
     infracoes: int = 0
     ultima_inspecao: InspecaoResumo | None = None
     pontuacao_totvs: PontuacaoTotvsResumo | None = None
@@ -149,7 +149,7 @@ class StatusUnidade(BaseModel):
     fechadas_produtivas: int
     fechadas_improdutivas: int
     canceladas: int
-    he_horas: float | None = None
+    saldo_banco_horas: float | None = None
     infr_dias: int = 0
     recorrencias: int = 0
 

@@ -1,9 +1,9 @@
 """Geração de relatório semanal rico em .docx.
 
-Cruza as 3 fontes (Proxxima, painel-ope, recorrência) e gera um documento
-com resumo executivo, tendências, padrões de recorrência, análise de
-produtividade por técnico, distribuição por natureza e comparativo com
-o período anterior.
+Cruza as fontes (Proxxima, planilha pública de banco de horas, painel-ope
+para infrações, Excel de recorrência) e gera um documento com resumo
+executivo, tendências, padrões de recorrência, análise de produtividade por
+técnico, distribuição por natureza e comparativo com o período anterior.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.banco_horas_semanal import BancoHorasSemanal
 from app.models.metrica_totvs import MetricaTotvs
 from app.models.ocorrencia_recorrencia import OcorrenciaRecorrencia
 from app.models.relatorio import Relatorio
@@ -25,6 +24,7 @@ from app.models.solicitacao_servico import SolicitacaoServico
 from app.services.cruzamento import (
     buscar_banco_horas_unidade,
     buscar_infracoes_unidade,
+    buscar_ultimos_saldos,
     normalizar_unidade,
 )
 from app.services.totvs_client import REPORT_PONTUACAO_DIA_TECNICO, TotvsClient
@@ -248,25 +248,21 @@ def _buscar_recorrencia_por_tecnico(db: Session, unidade: str, de: date, ate: da
     ]
 
 
-def _buscar_top_he(db: Session, de: date, ate: date, limite: int = 15) -> list[dict]:
-    """Top técnicos com mais HE via snapshots rankTecHE."""
-    he_por_tecnico: dict[str, float] = {}
-    snaps = db.scalars(
-        select(BancoHorasSemanal).where(
-            BancoHorasSemanal.semana_ate >= de,
-            BancoHorasSemanal.semana_de <= ate,
-        )
-    ).all()
-    for snap in snaps:
-        payload = snap.payload or {}
-        for item in payload.get("rankTecHE") or []:
-            if isinstance(item, dict):
-                nome = item.get("nome", "")
-                he = float(item.get("heHoras") or 0)
-                he_por_tecnico[nome] = he_por_tecnico.get(nome, 0) + he
+def _buscar_top_saldo(db: Session, de: date, ate: date, limite: int = 15) -> list[dict]:
+    """Top técnicos com maior saldo de banco de horas (último saldo no período).
 
-    ordenados = sorted(he_por_tecnico.items(), key=lambda x: x[1], reverse=True)[:limite]
-    return [{"tecnico": nome, "he_horas": round(he, 2)} for nome, he in ordenados]
+    Fonte: planilha pública (`banco_horas_saldo`) — substitui o HE do painel-ope.
+    """
+    registros = buscar_ultimos_saldos(db, de, ate)
+    ordenados = sorted(
+        (r for r in registros if r.saldo is not None),
+        key=lambda r: float(r.saldo),
+        reverse=True,
+    )[:limite]
+    return [
+        {"tecnico": r.tecnico, "saldo": round(float(r.saldo), 2), "unidade": r.unidade}
+        for r in ordenados
+    ]
 
 
 def _buscar_naturezas(db: Session, unidade: str, de: date, ate: date, limite: int = 10) -> list[dict]:
@@ -334,21 +330,12 @@ def _buscar_top_protocolos_recorrentes(db: Session, unidade: str, de: date, ate:
     ]
 
 
-def _buscar_tecnicos_com_he_e_recorrencia(db: Session, unidade: str, de: date, ate: date) -> list[dict]:
-    """Técnicos que têm HE E recorrência — risco combinado."""
-    # HE por técnico
-    he_map: dict[str, float] = {}
-    snaps = db.scalars(
-        select(BancoHorasSemanal).where(
-            BancoHorasSemanal.semana_ate >= de,
-            BancoHorasSemanal.semana_de <= ate,
-        )
-    ).all()
-    for snap in snaps:
-        for item in (snap.payload or {}).get("rankTecHE") or []:
-            if isinstance(item, dict):
-                nome = item.get("nome", "")
-                he_map[nome] = he_map.get(nome, 0) + float(item.get("heHoras") or 0)
+def _buscar_tecnicos_com_saldo_e_recorrencia(db: Session, unidade: str, de: date, ate: date) -> list[dict]:
+    """Técnicos que têm saldo de banco de horas E recorrência — risco combinado."""
+    # Saldo por técnico (último saldo no período)
+    saldo_map: dict[str, float] = {
+        r.tecnico: float(r.saldo) for r in buscar_ultimos_saldos(db, de, ate) if r.saldo is not None
+    }
 
     # Recorrência por técnico
     rec_map: dict[str, int] = {}
@@ -369,10 +356,10 @@ def _buscar_tecnicos_com_he_e_recorrencia(db: Session, unidade: str, de: date, a
 
     # Cruza
     ambos = []
-    for nome in set(he_map) & set(rec_map):
+    for nome in set(saldo_map) & set(rec_map):
         ambos.append({
             "tecnico": nome,
-            "he_horas": round(he_map[nome], 2),
+            "saldo": round(saldo_map[nome], 2),
             "reaberturas": rec_map[nome],
         })
     ambos.sort(key=lambda x: x["reaberturas"], reverse=True)
@@ -461,11 +448,11 @@ def gerar_relatorio_semanal(
     infracoes = buscar_infracoes_unidade(db, unidade_norm, periodo_de, periodo_ate)
     prod_tec = _buscar_produtividade_por_tecnico(db, unidade_norm, periodo_de, periodo_ate)
     rec_tec = _buscar_recorrencia_por_tecnico(db, unidade_norm, periodo_de, periodo_ate)
-    top_he = _buscar_top_he(db, periodo_de, periodo_ate)
+    top_saldo = _buscar_top_saldo(db, periodo_de, periodo_ate)
     naturezas = _buscar_naturezas(db, unidade_norm, periodo_de, periodo_ate)
     dist_dia = _buscar_distribuicao_dia_semana(db, unidade_norm, periodo_de, periodo_ate)
     prot_rec = _buscar_top_protocolos_recorrentes(db, unidade_norm, periodo_de, periodo_ate)
-    risco = _buscar_tecnicos_com_he_e_recorrencia(db, unidade_norm, periodo_de, periodo_ate)
+    risco = _buscar_tecnicos_com_saldo_e_recorrencia(db, unidade_norm, periodo_de, periodo_ate)
 
     # Coleta dados — período anterior (para tendências)
     status_ant = _buscar_status(db, unidade_norm, anterior_de, anterior_ate)
@@ -495,8 +482,8 @@ def gerar_relatorio_semanal(
              _delta_str(status["fech_improd"], status_ant["fech_improd"])],
             ["Canceladas", str(status["canceladas"]), str(status_ant["canceladas"]),
              _delta_str(status["canceladas"], status_ant["canceladas"])],
-            ["Horas Extras", f"{bh['he_horas']:.1f}h", f"{bh_ant['he_horas']:.1f}h",
-             _delta_str(bh["he_horas"], bh_ant["he_horas"])],
+            ["Saldo Banco de Horas", f"{bh['saldo']:.1f}h", f"{bh_ant['saldo']:.1f}h",
+             _delta_str(bh["saldo"], bh_ant["saldo"])],
             ["Infrações", str(infracoes), "-", "-"],
             ["Recorrências", str(status["recorrencias"]), str(status_ant["recorrencias"]),
              _delta_str(status["recorrencias"], status_ant["recorrencias"])],
@@ -514,7 +501,7 @@ def gerar_relatorio_semanal(
     _addSecao(doc, "2. Análise de Tendências")
     delta_abertas = status["abertas"] - status_ant["abertas"]
     delta_prod = status["fech_prod"] - status_ant["fech_prod"]
-    delta_he = bh["he_horas"] - bh_ant["he_horas"]
+    delta_saldo = bh["saldo"] - bh_ant["saldo"]
     delta_rec = status["recorrencias"] - status_ant["recorrencias"]
 
     insights = []
@@ -530,10 +517,10 @@ def gerar_relatorio_semanal(
     elif delta_prod < -10:
         insights.append(f"Produtividade caiu {abs(delta_prod)} fechadas — possível gargalo ou falta de equipe.")
 
-    if delta_he > 10:
-        insights.append(f"HE cresceu {delta_he:.1f}h — carga de trabalho acima do planejado.")
-    elif delta_he < -10:
-        insights.append(f"HE reduziu {abs(delta_he):.1f}h — equipe dentro da capacidade normal.")
+    if delta_saldo > 10:
+        insights.append(f"Saldo de banco de horas cresceu {delta_saldo:.1f}h — banco acumulado acima do planejado.")
+    elif delta_saldo < -10:
+        insights.append(f"Saldo de banco de horas reduziu {abs(delta_saldo):.1f}h — banco retornando ao normal.")
 
     if delta_rec > 5:
         insights.append(f"Recorrências subiram {delta_rec} — qualidade dos fechamentos caiu.")
@@ -602,17 +589,17 @@ def gerar_relatorio_semanal(
     else:
         _addParagrafo(doc, "  Nenhuma recorrência registrada no período.")
 
-    # 5. Horas Extras
-    _addSecao(doc, "5. Horas Extras por Técnico")
-    if top_he:
+    # 5. Banco de Horas por Técnico (Saldo)
+    _addSecao(doc, "5. Banco de Horas por Técnico (Saldo)")
+    if top_saldo:
         _addTabela(doc,
-            ["Técnico", "HE (h)"],
-            [[r["tecnico"], f"{r['he_horas']:.2f}"] for r in top_he]
+            ["Técnico", "Saldo (h)", "Unidade"],
+            [[r["tecnico"], f"{r['saldo']:.2f}", r.get("unidade", "")] for r in top_saldo]
         )
-        total_he_geral = sum(r["he_horas"] for r in top_he)
-        _addParagrafo(doc, f"Total HE top 10: {total_he_geral:.1f}h")
+        total_saldo_geral = sum(r["saldo"] for r in top_saldo)
+        _addParagrafo(doc, f"Saldo total top técnicos: {total_saldo_geral:.1f}h")
     else:
-        _addParagrafo(doc, "  Nenhum registro de HE no período.")
+        _addParagrafo(doc, "  Nenhum registro de banco de horas no período.")
 
     # 6. Distribuição por Natureza
     _addSecao(doc, "6. Distribuição por Natureza")
@@ -642,13 +629,13 @@ def gerar_relatorio_semanal(
     else:
         _addParagrafo(doc, "  Nenhum dado temporal no período.")
 
-    # 8. Risco Combinado (HE + Recorrência)
-    _addSecao(doc, "8. Técnicos com Risco Combinado (HE + Recorrência)")
-    _addParagrafo(doc, "Técnicos que acumulam horas extras E recorrências — maior atenção.")
+    # 8. Risco Combinado (Saldo + Recorrência)
+    _addSecao(doc, "8. Técnicos com Risco Combinado (Banco de Horas + Recorrência)")
+    _addParagrafo(doc, "Técnicos que acumulam saldo de banco de horas E recorrências — maior atenção.")
     if risco:
         _addTabela(doc,
-            ["Técnico", "HE (h)", "Reaberturas"],
-            [[r["tecnico"], f"{r['he_horas']:.1f}", str(r["reaberturas"])] for r in risco]
+            ["Técnico", "Saldo (h)", "Reaberturas"],
+            [[r["tecnico"], f"{r['saldo']:.1f}", str(r["reaberturas"])] for r in risco]
         )
     else:
         _addParagrafo(doc, "  Nenhum técnico com risco combinado no período.")
@@ -707,7 +694,7 @@ def gerar_relatorio_semanal(
     _addSecao(doc, "11. Observações")
     _addParagrafos(doc, [
         "Relatório gerado automaticamente pelo Agente OPE.",
-        "Fontes: Proxxima (solicitações), painel-ope (HE/infrações), Excel de recorrência, TOTVS Analytics (pontuação).",
+        "Fontes: Proxxima (solicitações), planilha pública de banco de horas (saldo), painel-ope (infrações), Excel de recorrência, TOTVS Analytics (pontuação).",
         "Período de comparação: mesma duração imediatamente anterior.",
         "Para dúvidas ou aprofundamento, consulte o agente operacoes no opencode.",
         f"Gerado em: {date.today().strftime('%d/%m/%Y')}",

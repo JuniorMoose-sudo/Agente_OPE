@@ -95,6 +95,7 @@ class TestFerramentasRegistradas:
             "get_atendimentos_agendados",
             "get_pontuacao_equipe",
             "get_encerradas_periodo",
+            "get_banco_horas_saldo",
         }
 
     def test_call_tool_via_fastmcp(self, monkeypatch):

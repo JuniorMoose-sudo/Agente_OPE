@@ -264,6 +264,26 @@ def get_encerradas_periodo(
 
 
 @mcp.tool()
+def get_banco_horas_saldo(
+    unidade: str,
+    periodo_de: Optional[str] = None,
+    periodo_ate: Optional[str] = None,
+) -> str:
+    """Saldo de banco de horas de uma unidade ou técnico — fonte: planilha
+    pública (substitui o painel-ope). Retorna o total da unidade e o ÚLTIMO
+    saldo de cada técnico no período. Use para perguntas do tipo 'qual o saldo
+    do banco de horas hoje' / 'banco de horas de um técnico'.
+
+    Args:
+        unidade: Unidade: CAMPINA GRANDE ou LAGOA SECA.
+        periodo_de: Início do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+        periodo_ate: Fim do período (YYYY-MM-DD). Se omitido, usa a semana atual.
+    """
+    path = f"/banco-horas/saldo/{quote(unidade, safe='')}{_query(periodo_de, periodo_ate)}"
+    return _chamar_api("GET", path)
+
+
+@mcp.tool()
 def get_planilha(aba: Optional[str] = None, limite: Optional[int] = None) -> str:
     """Lê dados da planilha Google Sheets. Primeiro chame sem aba para ver a
     lista de abas disponíveis. Depois chame com o nome da aba para ler os
