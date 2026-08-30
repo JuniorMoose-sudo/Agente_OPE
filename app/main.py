@@ -10,8 +10,6 @@ from app.jobs.sync_pontuacao import stop_scheduler as stop_scheduler_pontuacao
 from app.jobs.sync_proxxima import start_scheduler, stop_scheduler
 from app.jobs.sync_recorrencia_painel import start_scheduler as start_scheduler_recorrencia
 from app.jobs.sync_recorrencia_painel import stop_scheduler as stop_scheduler_recorrencia
-from app.jobs.sync_totvs import start_scheduler as start_scheduler_totvs
-from app.jobs.sync_totvs import stop_scheduler as stop_scheduler_totvs
 from app.routers import banco_horas, diagnostico, health, planilha, recorrencia, relatorio, solicitacoes, totvs
 
 
@@ -20,13 +18,11 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
     start_scheduler()
     start_scheduler_ope()
-    start_scheduler_totvs()
     start_scheduler_recorrencia()
     start_scheduler_pontuacao()
     yield
     stop_scheduler()
     stop_scheduler_ope()
-    stop_scheduler_totvs()
     stop_scheduler_recorrencia()
     stop_scheduler_pontuacao()
 
