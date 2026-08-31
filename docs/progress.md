@@ -979,3 +979,7 @@ Decisoes do usuario (2026-08-30):
   hermes-gateway: ativo, sem erro de provider, NRestarts=0.
 - Pendencia: usuario confirmar no Telegram que o bot responde normalmente.
   -> **Confirmado em 30/08: bot respondendo normalmente.**
+- Cron "Resumo Diario OPE (07:30)" (94a08eebbd48) ficou em drift-skip apos a troca
+  de modelo. Fixado: `hermes cron edit 94a08eebbd48 --provider opencode-free
+  --model nemotron-3.5-lightning-free`. Job ativo, proxima exec 01/09 07:30.
+  (run manual travou por timeout do modelo free - nao bloqueante.)
